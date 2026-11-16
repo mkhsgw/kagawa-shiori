@@ -782,7 +782,7 @@ function toDays(rows){
 
 async function call(body){
   const r = body ? await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({key:API_KEY,...body})})
-                 : await fetch(API_URL+"?key="+encodeURIComponent(API_KEY));
+                 : await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({key:API_KEY,action:"state"})});
   const j=await r.json(); if(!j.ok) throw new Error(j.error||"error"); return j;
 }
 function applyState(j){
