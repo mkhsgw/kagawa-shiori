@@ -323,6 +323,15 @@ ul.plain li span{min-width:0;flex:1}
 .pola.big img{aspect-ratio:auto;max-height:66dvh;object-fit:contain;background:#14173d}
 .pola.big span{font-size:17px;white-space:normal}
 [hidden]{display:none!important}
+/* ---- 地図の検索と候補 ---- */
+.mapsearch{position:relative;top:auto;z-index:20}
+.sugbox{position:absolute;left:0;right:0;top:52px;display:grid;max-height:52vh;overflow-y:auto;background:var(--card);border:2.5px solid var(--edge);border-radius:16px;box-shadow:var(--shadow)}
+.sug{display:flex;align-items:center;gap:10px;min-width:0;padding:9px 12px;background:none;border:0;border-bottom:2px dotted var(--line);text-align:left;font-weight:900}
+.sug:last-child{border-bottom:0}
+.sug span:not(.kind):not(.avatar){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sug small{flex:none;font-size:11.5px;font-weight:500;color:var(--muted)}
+.sug .avatar{border-width:2px;box-shadow:none}
+.sug-none{padding:10px 14px}
 /* ---- 場所の検索 ---- */
 .searchbox{display:grid;gap:4px;position:sticky;top:calc(10px + env(safe-area-inset-top,0px));z-index:6}
 .searchbox input{border-radius:999px;padding:11px 18px;background:var(--card);box-shadow:3px 3px 0 var(--edge);font-weight:700}
@@ -562,6 +571,11 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
 
   <section class="tab" id="tab-map" hidden><div class="wrap">
     <h2>地図</h2>
+    <div class="searchbox mapsearch">
+      <input id="mapSearch" type="search" placeholder="場所・メンバーを検索" autocomplete="off" enterkeyhint="search" aria-label="地図を検索" aria-controls="mapSug">
+      <div class="sugbox" id="mapSug" hidden></div>
+      <span class="lead" id="mapCount" role="status"></span>
+    </div>
     <div class="row">
       <button class="btn" id="gpsBtn" type="button">現在地を表示</button>
       <span id="gpsMsg">ボタンを押すと、位置情報の許可を求めます。</span>
@@ -1061,6 +1075,45 @@ function spotText(s){
 }
 $("#spotSearch").addEventListener("input",()=>renderSpots());
 
+/* ---------- 地図の検索: 場所とメンバーを同じ欄で探し、当てはまるピンだけを出す ---------- */
+let mapWords=[];
+const toWords=v=>normText(v).split(/\s+/).filter(Boolean);
+const mapMatchSpot=s=>!mapWords.length||mapWords.every(x=>spotText(s).includes(x));
+const mapMatchMem=n=>!mapWords.length||mapWords.every(x=>normText(n+" メンバー").includes(x));
+const lastLoc=n=>{ const l=LOCS[n]; return l&&l.length?l[l.length-1]:null; };
+function mapSearchApply(fit){
+  mapWords=toWords($("#mapSearch").value);
+  drawMarkers(false); drawMembers();
+  const sp=SPOTS.filter(s=>s.lat!=null&&mapMatchSpot(s)), mem=S.members.filter(n=>lastLoc(n)&&mapMatchMem(n));
+  $("#mapCount").textContent=!mapWords.length?"":(sp.length||mem.length)?`場所 ${sp.length}件・メンバー ${mem.length}人を表示中`:"当てはまるピンがありません。";
+  if(fit&&map&&mapWords.length){ const pts=[...sp.map(s=>[s.lat,s.lng]),...mem.map(n=>lastLoc(n).slice(0,2))]; if(pts.length) map.fitBounds(pts,{padding:[40,40],maxZoom:15}); }
+}
+function mapSuggest(){
+  const box=$("#mapSug"), w=toWords($("#mapSearch").value); box.textContent="";
+  if(!w.length){ box.hidden=true; return; }
+  const items=[];
+  S.members.forEach(n=>{ if(w.every(x=>normText(n).includes(x))) items.push({n}); });
+  SPOTS.forEach(sp=>{ if(w.every(x=>spotText(sp).includes(x))) items.push({sp}); });
+  items.slice(0,8).forEach(it=>{ const b=el("button",{type:"button",className:"sug"});
+    if(it.n){ const l=lastLoc(it.n); b.append(avatarEl(it.n,30),el("span",{textContent:it.n}),el("small",{textContent:l?"メンバー・"+ago(l[2]):"メンバー・位置の共有なし"}));
+      b.addEventListener("click",()=>pickSug(it.n,l?[l[0],l[1]]:null,null)); }
+    else { const sp=it.sp, tag=el("span",{className:"kind",textContent:KIND[sp.kind].label}); tag.style.background=KIND[sp.kind].color;
+      b.append(tag,el("span",{textContent:sp.name}),el("small",{textContent:sp.lat==null?"地図にピンなし":(sp.category||"")}));
+      b.addEventListener("click",()=>pickSug(sp.name,sp.lat==null?null:[sp.lat,sp.lng],sp)); }
+    box.append(b); });
+  if(!items.length) box.append(el("span",{className:"lead sug-none",textContent:"当てはまる場所・メンバーはありません。"}));
+  else if(items.length>8) box.append(el("span",{className:"lead sug-none",textContent:`ほか ${items.length-8}件。言葉を足すと絞れます。`}));
+  box.hidden=false;
+}
+function pickSug(text,at,sp){
+  $("#mapSearch").value=text; $("#mapSug").hidden=true; mapSearchApply(false); $("#mapSearch").blur();
+  if(map&&at){ map.setView(at,15); if(sp&&markers[sp.id]) markers[sp.id].openPopup(); $("#map").scrollIntoView({block:"center"}); }
+}
+$("#mapSearch").addEventListener("input",()=>{ mapSuggest(); mapSearchApply(false); });
+$("#mapSearch").addEventListener("focus",mapSuggest);
+$("#mapSearch").addEventListener("keydown",ev=>{ if(ev.key==="Enter"){ ev.preventDefault(); $("#mapSug").hidden=true; mapSearchApply(true); $("#mapSearch").blur(); } });
+$("#mapSearch").addEventListener("blur",()=>setTimeout(()=>{ $("#mapSug").hidden=true; },250));   // 候補を押す時間を残す
+
 /* ---------- 定休日の判定: 旅行中の各日に、その店へ行けるか ---------- */
 function dayStatus(s,d){
   if(s.kind!=="shop") return "";
@@ -1145,7 +1198,7 @@ function drawMarkers(fit){
   Object.values(markers).forEach(m=>m.remove()); markers={};
   const pts=[];
   SPOTS.forEach(s=>{
-    if(s.lat==null) return;
+    if(s.lat==null||!mapMatchSpot(s)) return;   // 検索中は、当てはまる場所のピンだけ出す
     const k=KIND[s.kind];
     let icon;
     if(s.thumb){            // サムネがあれば、その写真をピンにする
@@ -1552,7 +1605,7 @@ function drawMembers(){
   if(!map) return;
   if(memLayer) memLayer.remove(); memLayer=L.layerGroup().addTo(map);
   const tracks=store.get("tracks",true)!==false;
-  names.forEach(n=>{ const pts=ALLLOC[n], c=colorOf(n), last=pts[pts.length-1];
+  names.filter(mapMatchMem).forEach(n=>{ const pts=ALLLOC[n], c=colorOf(n), last=pts[pts.length-1];
     if(tracks&&pts.length>1){ L.polyline(pts.map(q=>[q[0],q[1]]),{color:c,weight:5,opacity:.85,dashArray:"1 9",lineCap:"round"}).addTo(memLayer);
       pts.slice(0,-1).forEach(q=>L.circleMarker([q[0],q[1]],{radius:4,color:"#14173d",weight:1.5,fillColor:c,fillOpacity:1}).addTo(memLayer).bindPopup(el("div",{},el("b",{textContent:n}),el("br"),ago(q[2])+"にここ"))); }
     if(n===meName) return;
