@@ -319,6 +319,29 @@ ul.plain li span{min-width:0;flex:1}
 .pola.big img{aspect-ratio:auto;max-height:66dvh;object-fit:contain;background:#14173d}
 .pola.big span{font-size:17px;white-space:normal}
 [hidden]{display:none!important}
+/* ---- 自由選択枠と投票 ---- */
+.tl .badge.voted{background:var(--olive);color:var(--ai-deep)}
+.addslot{position:relative;z-index:1;margin-top:4px}
+#slotDlg{border:0;padding:0;background:none;color:var(--ink);width:100%;max-width:600px;max-height:none;margin:auto auto 0;overflow:visible;
+  translate:0 100%;transition:translate .35s cubic-bezier(.2,1.1,.4,1),display .35s allow-discrete,overlay .35s allow-discrete}
+#slotDlg[open]{translate:0 0}
+@starting-style{#slotDlg[open]{translate:0 100%}}
+#slotDlg::backdrop{background:color-mix(in oklch,var(--ai-deep) 70%,#0000);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+.sheet{display:grid;gap:14px;background:var(--bg);border:2.5px solid var(--edge);border-bottom:0;border-radius:22px 22px 0 0;max-height:88dvh;overflow-y:auto;
+  padding:18px max(16px,env(safe-area-inset-right,0px)) calc(22px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+#slotBody{display:grid;gap:12px;grid-template-columns:minmax(0,1fr)}
+.sheet{grid-template-columns:minmax(0,1fr)}
+.sheet input,.sheet select{max-width:100%}
+.cand{display:grid;gap:8px;background:var(--card);border:2.5px solid var(--edge);border-radius:14px;padding:12px;box-shadow:4px 4px 0 var(--edge)}
+.cand.mine{box-shadow:4px 4px 0 var(--shu);border-color:var(--shu)}
+.cand.ng{opacity:.6}
+.cand-head{display:flex;gap:10px;align-items:baseline}
+.cand-head b{flex:1;min-width:0;font-size:16.5px;font-weight:900}
+.cand-head .nvotes{font-family:var(--display);font-size:20px;color:var(--shu)}
+.feas{font-size:13px;line-height:1.6}
+.feas .mark{font-family:var(--display);font-size:12px;border:2px solid var(--edge);border-radius:999px;padding:0 9px;margin-right:8px;white-space:nowrap;background:var(--olive);color:var(--ai-deep)}
+.cand.tight .mark{background:var(--dashi)}
+.cand.ng .mark{background:var(--bg);color:var(--ink)}
 /* ---- 行程: 1日ずつ・いまここが分かる ---- */
 .daytabs{position:sticky;top:calc(10px + env(safe-area-inset-top,0px));z-index:6;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px}
 .daytab{display:grid;justify-items:center;line-height:1.25;padding:6px 4px 5px;background:var(--card);border:2.5px solid var(--edge);box-shadow:3px 3px 0 var(--edge);border-radius:14px;transition:rotate .2s,translate .2s,background .2s}
@@ -592,6 +615,25 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
   </div></section>
 </main>
 
+<dialog id="slotDlg" aria-labelledby="slotTitle">
+  <div class="sheet">
+    <div class="row"><h3 id="slotTitle" style="flex:1"></h3><button class="btn small ghost" id="slotClose" type="button">とじる</button></div>
+    <div id="slotBody"></div>
+    <button class="btn" id="slotDecide" type="button"></button>
+    <form class="card" id="candForm">
+      <h3>候補を出す</h3>
+      <select id="candPick" aria-label="お店リストから選ぶ"></select>
+      <p class="lead">リストにない店は、下に入れてください。</p>
+      <input id="candName" maxlength="30" placeholder="店名（地図のピンと所要時間に使います）" autocomplete="off" aria-label="店名">
+      <input id="candLink" inputmode="url" placeholder="GoogleマップのURL（ナビ用）" autocomplete="off" aria-label="GoogleマップのURL">
+      <div class="row"><label class="lead">開店 <input id="candOpen" type="time" style="width:auto"></label><label class="lead">閉店 <input id="candClose" type="time" style="width:auto"></label></div>
+      <button class="btn small" type="submit">候補に追加</button>
+      <p class="lead" id="slotHint" role="status"></p>
+    </form>
+    <button class="x" id="slotDel" type="button" style="justify-self:start;font-size:12.5px">この枠を消す</button>
+  </div>
+</dialog>
+
 <dialog id="viewer" aria-label="写真">
   <div class="pola big"><div id="viewImg"></div><span id="viewCap"></span><small id="viewMeta"></small></div>
   <div class="row" style="justify-content:center;margin-top:16px">
@@ -643,7 +685,7 @@ const store = {
 const yen = n => Math.round(n).toLocaleString("ja-JP")+"円";
 const at = (date,t) => new Date(`${date}T${t}:00+09:00`);
 const spotById = id => SPOTS.find(s=>s.id===id);
-const gmapUrl = s => "https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(s.gmap||s.name);
+const gmapUrl = s => s.link || "https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(s.gmap||s.name);
 const calm = matchMedia("(prefers-reduced-motion:reduce)");
 
 /* ---------- タブ ---------- */
@@ -715,10 +757,12 @@ let selDay=null;
 function evLi(d,e,i,state,now){
   const li=el("li",{className:[state,e.open?"open":""].join(" ").trim()}); li.dataset.i=i;
   if(e.ticket){ if(state==="current") li.append(el("span",{className:"badge now",textContent:"いまここ"})); li.append(ticketEl(d,e)); return li; }
+  if(e.open&&e.id) return slotLi(d,e,i,state);
   const s=e.spot&&spotById(e.spot);
   const head=[];
   if(state==="current") head.push(el("span",{className:"badge now",textContent:"いまここ"}));
   if(state==="next"){ const b=el("span",{className:"badge left",textContent:"つぎ・"+fmtLeft(at(d.date,e.t)-now)}); b.dataset.t=at(d.date,e.t).getTime(); head.push(b); }
+  if(e.decided) head.push(el("span",{className:"badge voted",textContent:"投票で決定"}));
   head.push(el("time",{textContent:e.t}),el("span",{className:"what",textContent:e.what}));
   if(!e.memo&&!s){ li.append(el("div",{className:"ev"},...head)); return li; }
   const det=el("details",{className:"ev"}); det.open=state==="current"||state==="next";
@@ -726,6 +770,8 @@ function evLi(d,e,i,state,now){
   const body=el("div",{className:"ev-body"});
   if(e.memo) body.append(el("span",{className:"memo",textContent:e.memo}));
   if(s) body.append(el("a",{href:gmapUrl(s),target:"_blank",rel:"noopener",textContent:"ナビを開く ↗",className:"memo"}));
+  if(e.decided&&e.id){ const u=el("button",{className:"btn small ghost",type:"button",textContent:"投票に戻す"}); u.style.marginTop="8px";
+    u.addEventListener("click",()=>{ if(!u.dataset.armed){ u.dataset.armed="1"; u.textContent="もう一度押すと戻します"; return; } write({action:"undecide",slot:e.id},()=>{}); }); body.append(el("div",{},u)); }
   det.append(body); li.append(det); return li;
 }
 function renderPlan(){
@@ -749,6 +795,11 @@ function renderPlan(){
   // 済んだ予定は1行にたたむ
   if(pastUl.children.length) day.append(el("details",{className:"pastbox"},el("summary",{textContent:`おわった予定 ${pastUl.children.length}件`}),pastUl));
   if(ul.children.length) day.append(ul); else day.append(el("p",{className:"lead",textContent:"この日の予定はすべて終わりました。"}));
+  // ＋ 枠を追加
+  const addF=el("form",{className:"row addslot"}), tIn=el("input",{type:"time",required:true}); tIn.setAttribute("aria-label","枠の開始時刻"); tIn.style.width="auto";
+  addF.append(tIn,el("button",{className:"btn small ghost",type:"submit",textContent:"＋ 自由選択枠を追加"}));
+  addF.addEventListener("submit",ev=>{ ev.preventDefault(); if(!tIn.value) return; write({action:"addSlot",date:d.date,time:tIn.value},()=>{}); tIn.value=""; });
+  day.append(addF);
   root.append(tabs,day);
   loadWeather();
 }
@@ -878,7 +929,9 @@ function toSpot(r){
   [["営業",r.hours],["定休",r.closed],["支払い",r.pay],["駐車場",r.parking]].forEach(([k,v])=>{ if(v) info[k]=v; });
   lines(r.info).forEach(l=>{ const m=l.match(/^(.+?)[:：]\s*(.+)$/); if(m) info[m[1].trim()]=m[2].trim(); else info["メモ"]=l; });
   const lat=num(r.lat), lng=num(r.lng);
-  return { id:r.id, kind:KMAP[r.kind]||"shop", name:r.name, lat:lng==null?null:lat, lng:lat==null?null:lng, gmap:r.gmap||r.name, info, order:r.order||"", tips:lines(r.memo) };
+  return { id:r.id, kind:KMAP[r.kind]||"shop", name:r.name, lat:lng==null?null:lat, lng:lat==null?null:lng, gmap:r.gmap||r.name, info, order:r.order||"", tips:lines(r.memo),
+    link:/^https:\/\//.test(r.link||"")?r.link:"", open:r.open||"", close:r.close||"", stay:parseInt(r.stay,10)||0, by:r.by||"",
+    closedDays:/第|不定/.test(r.closed||"")?[]:(String(r.closed||"").match(/[月火水木金土日]/g)||[]) };
 }
 function toDays(rows){
   const hm=t=>{ const m=String(t||"").match(/^(\d{1,2})[:：](\d{2})/); return m?m[1].padStart(2,"0")+":"+m[2]:null; };
@@ -889,7 +942,7 @@ function toDays(rows){
     const [y,mo,d]=date.split("-").map(Number);
     const events=by[date].sort((a,b)=>a.t.localeCompare(b.t)).map(r=>{
       const s=SPOTS.find(x=>x.id===r.spot||x.name===r.spot);
-      const e={t:r.t,what:r.what,memo:r.memo||"",open:r.type==="未定"}; if(s) e.spot=s.id;
+      const e={t:r.t,what:r.what,memo:r.memo||"",open:r.type==="未定",decided:r.type==="決定済",id:r.id||""}; if(s) e.spot=s.id;
       if(r.type==="飛行機") e.ticket={from:r.from||"",to:r.to||"",dep:r.t,arr:hm(r.arr)||""};
       return e; });
     return { date, label:`${mo}/${d}`, dow:"日月火水木金土"[new Date(Date.UTC(y,mo-1,d)).getUTCDay()], title:DAY_TITLES[date]||"", events };
@@ -911,6 +964,7 @@ function applyState(j){
     ALL=buildAll(); renderPlan(); drawMarkers(false); }
   if(p!==sigP){ sigP=p; renderSpots(); renderPhotos(); }
   if(j.locs){ const l=JSON.stringify(j.locs); if(l!==sigL){ sigL=l; LOCS=j.locs; } }
+  { const v=JSON.stringify([j.cands,j.votes,j.drive]); if(v!==sigV){ sigV=v; CANDS=j.cands||[]; VOTES=j.votes||[]; DRIVE={}; (j.drive||[]).forEach(x=>{ DRIVE[x[0]+">"+x[1]]=x[2]; }); renderPlan(); if($("#slotDlg").open) renderSlot(); } }
   renderShared(); renderNow(); drawMembers();
 }
 async function refresh(){
@@ -1022,6 +1076,96 @@ $("#viewer").addEventListener("click",ev=>{ if(ev.target===$("#viewer")) $("#vie
 $("#viewDel").addEventListener("click",()=>{ const d=$("#viewDel");
   if(!d.dataset.armed){ d.dataset.armed="1"; d.textContent="もう一度押すと削除"; return; }
   const p=viewing; $("#viewer").close(); write({action:"delPhoto",id:p.id},()=>{ PHOTOS=PHOTOS.filter(x=>x.id!==p.id); sigP=""; renderSpots(); renderPhotos(); }); });
+
+/* ---------- 自由選択枠: 候補を出して投票し、1位を行程に入れる ---------- */
+let CANDS=[], VOTES=[], DRIVE={}, sigV="", curSlot=null;
+const mins=t=>{ const m=String(t||"").match(/^(\d{1,2})[:：](\d{2})/); return m?Number(m[1])*60+Number(m[2]):null; };
+const hhmm=n=>String(Math.floor(n/60)).padStart(2,"0")+":"+String(Math.round(n%60)).padStart(2,"0");
+// 車の所要時間。事前計算があればそれに余裕（1.2倍＋5分）を足す。無ければ直線距離からの概算。
+function drive(a,b){
+  if(!a||!b||a.lat==null||b.lat==null) return null;
+  if(a.id===b.id) return {min:0,est:false};
+  const d=DRIVE[a.id+">"+b.id];
+  return d!=null?{min:Math.round(d*1.2+5),est:false}:{min:Math.round(km(a,b)*1.4/35*60*1.2+5),est:true};
+}
+function findSlot(id){ for(const d of DAYS){ const k=d.events.findIndex(e=>e.id===id); if(k>=0) return {d,k,e:d.events[k]}; } return null; }
+function feas(d,k,s){
+  const t0=mins(d.events[k].t), notes=[]; let level="ok";
+  if(s.closedDays.includes(d.dow)) return {level:"ng",notes:[d.dow+"曜は定休"]};
+  let origin=null; for(let x=k-1;x>=0;x--){ const sp=d.events[x].spot&&spotById(d.events[x].spot); if(sp&&sp.lat!=null){ origin=sp; break; } }
+  let next=null; for(let x=k+1;x<d.events.length;x++){ if(!d.events[x].open){ next=d.events[x]; break; } }
+  const d1=drive(origin,s), arrive=t0+(d1?d1.min:0);
+  notes.push(d1?`${origin.name}から車${d1.min}分${d1.est?"（概算）":""}・${hhmm(arrive)}着`:"所要時間は不明（場所を特定中）");
+  const op=mins(s.open), cl=mins(s.close), stay=s.stay||30; let start=arrive;
+  if(op==null&&cl==null) notes.push("営業時間は未確認");
+  if(op!=null&&arrive<op){ start=op; notes.push(`開店 ${s.open} まで${op-arrive}分待ち`); }
+  if(cl!=null){ if(start>=cl) return {level:"ng",notes:[...notes,`閉店 ${s.close} に間に合わない`]};
+    if(start+stay>cl){ level="tight"; notes.push(`着いて${cl-start}分で閉店`); } }
+  if(next){ const d2=drive(s,next.spot&&spotById(next.spot)), margin=mins(next.t)-(start+stay+(d2?d2.min:0));
+    if(margin<0) return {level:"ng",notes:[...notes,`次の「${next.what}」に${-margin}分遅れる`]};
+    if(margin<15) level="tight"; notes.push(`滞在${stay}分で、次の「${next.what}」まで余裕${margin}分`); }
+  return {level,notes};
+}
+function tally(slot){ const c={}; CANDS.filter(x=>x.slot===slot).forEach(x=>{ c[x.spot]=[]; }); VOTES.filter(x=>x.slot===slot).forEach(x=>{ if(c[x.spot]) c[x.spot].push(x.name); });
+  return Object.keys(c).map(spot=>({spot,who:c[spot]})).sort((a,b)=>b.who.length-a.who.length); }
+function slotLi(d,e,i,state){
+  const li=el("li",{className:("open slot "+state).trim()}); li.dataset.i=i;
+  if(state==="current") li.append(el("span",{className:"badge now",textContent:"いまここ"}));
+  li.append(el("time",{textContent:e.t}),el("span",{className:"what",textContent:"自由選択枠"}));
+  if(e.what&&e.what!=="自由選択枠") li.append(el("span",{className:"memo",textContent:e.what}));
+  const t=tally(e.id), votes=t.reduce((a,x)=>a+x.who.length,0);
+  const b=el("button",{className:"btn small",type:"button",textContent:"行先を投票"}); b.addEventListener("click",()=>openSlot(e.id));
+  const info=!t.length?"候補を出そう":`候補${t.length}・${votes}票`+(votes?`・1位 ${spotName(t[0].spot)}`:"");
+  const r=el("div",{className:"row"},b,el("span",{className:"lead",textContent:info})); r.style.marginTop="6px"; li.append(r);
+  return li;
+}
+function openSlot(id){ curSlot=id; renderSlot(); const dlg=$("#slotDlg"); if(!dlg.open) dlg.showModal(); }
+function renderSlot(){
+  const f=findSlot(curSlot), box=$("#slotBody"); box.textContent="";
+  if(!f||!f.e.open){ if($("#slotDlg").open) $("#slotDlg").close(); return; }
+  const {d,k,e}=f, me=getMe(), t=tally(e.id), mine=(VOTES.find(x=>x.slot===e.id&&x.name===me)||{}).spot;
+  $("#slotTitle").textContent=`${d.label}（${d.dow}）${e.t} の行先`;
+  if(!t.length) box.append(el("p",{className:"lead",textContent:"まだ候補がありません。下から最初の候補を出してください。"}));
+  const MARK={ok:"◎ 行ける",tight:"△ ぎりぎり",ng:"× むずかしい"};
+  t.forEach(x=>{ const s=spotById(x.spot); if(!s) return; const fz=feas(d,k,s);
+    const card=el("div",{className:"cand "+fz.level+(mine===x.spot?" mine":"")});
+    card.append(el("div",{className:"cand-head"},el("b",{textContent:s.name}),el("span",{className:"nvotes",textContent:x.who.length+"票"})));
+    card.append(el("div",{className:"feas"},el("span",{className:"mark",textContent:MARK[fz.level]}),fz.notes.join("／")));
+    if(s.order) card.append(el("div",{className:"lead",textContent:"おすすめ: "+s.order}));
+    if(x.who.length) card.append(el("div",{className:"lead",textContent:"投票: "+x.who.join("・")}));
+    const vb=el("button",{className:"btn small"+(mine===x.spot?"":" ghost"),type:"button",textContent:mine===x.spot?"投票ずみ ✓":"ここに投票"});
+    vb.addEventListener("click",()=>{ const to=mine===x.spot?"":x.spot;
+      write({action:"vote",slot:e.id,name:me,spot:to},()=>{ VOTES=VOTES.filter(v=>!(v.slot===e.id&&v.name===me)); if(to) VOTES.push({slot:e.id,name:me,spot:to}); renderSlot(); renderPlan(); }); });
+    const row=el("div",{className:"row"},vb,el("a",{className:"btn small ghost",href:gmapUrl(s),target:"_blank",rel:"noopener",textContent:"地図 ↗"}));
+    if(!x.who.length&&s.by===me){ const del=el("button",{className:"x",type:"button",textContent:"取り下げる"}); del.style.fontSize="12.5px";
+      del.addEventListener("click",()=>write({action:"delCand",slot:e.id,spot:x.spot},()=>{ CANDS=CANDS.filter(c=>!(c.slot===e.id&&c.spot===x.spot)); renderSlot(); })); row.append(del); }
+    card.append(row); box.append(card); });
+  // 候補を出す
+  const pick=$("#candPick"), used=new Set(t.map(x=>x.spot)); pick.textContent="";
+  pick.append(el("option",{value:"",textContent:"お店リストから選ぶ"}));
+  SPOTS.filter(s=>s.kind==="shop"&&!used.has(s.id)).forEach(s=>pick.append(el("option",{value:s.id,textContent:s.name})));
+  // 決定
+  const top=t.filter(x=>x.who.length&&x.who.length===t[0].who.length), db=$("#slotDecide");
+  db.disabled=!top.length; db.dataset.armed="";
+  db.textContent=!top.length?"投票が入ると決定できます":top.length>1?`同票${top.length}件からくじ引きで決定`:`「${spotName(top[0].spot)}」に決定`;
+  $("#slotHint").textContent=""; const dl=$("#slotDel"); dl.dataset.armed=""; dl.textContent="この枠を消す";
+}
+$("#slotClose").addEventListener("click",()=>$("#slotDlg").close());
+$("#slotDlg").addEventListener("click",ev=>{ if(ev.target===$("#slotDlg")) $("#slotDlg").close(); });
+$("#candForm").addEventListener("submit",ev=>{ ev.preventDefault(); const hint=$("#slotHint"), me=getMe();
+  const spot=$("#candPick").value, name=$("#candName").value.trim(), link=$("#candLink").value.trim();
+  if(!spot&&!name){ hint.textContent="リストから選ぶか、店名を入れてください。"; return; }
+  if(!spot&&link&&!/^https:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|(www\.)?google\.[a-z.]+\/maps|maps\.google\.)/.test(link)){ hint.textContent="GoogleマップのURLを貼ってください（共有ボタンでコピーしたもの）。"; return; }
+  hint.textContent="候補を追加しています…";
+  write(spot?{action:"addCand",slot:curSlot,spot,by:me}:{action:"addCand",slot:curSlot,name,link,open:$("#candOpen").value,close:$("#candClose").value,by:me},()=>{})
+    .then(ok=>{ hint.textContent=ok?"":"追加できませんでした。電波を確認してください。"; if(ok){ ["#candName","#candLink","#candOpen","#candClose"].forEach(q=>{ $(q).value=""; }); } });
+});
+$("#slotDecide").addEventListener("click",()=>{ const db=$("#slotDecide"), t=tally(curSlot), top=t.filter(x=>x.who.length&&x.who.length===t[0].who.length); if(!top.length) return;
+  if(!db.dataset.armed){ db.dataset.armed="1"; db.textContent="もう一度押すと行程に入れます"; return; }
+  const win=top[Math.floor(Math.random()*top.length)]; $("#slotDlg").close();
+  write({action:"decide",slot:curSlot,spot:win.spot},()=>{}); });
+$("#slotDel").addEventListener("click",()=>{ const b=$("#slotDel"); if(!b.dataset.armed){ b.dataset.armed="1"; b.textContent="もう一度押すと消します"; return; }
+  $("#slotDlg").close(); write({action:"delSlot",slot:curSlot},()=>{}); });
 
 /* ---------- メンバーの現在地と行動履歴 ---------- */
 let LOCS={}, sigL="", memLayer=null, lastSent=null;
