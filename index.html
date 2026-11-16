@@ -557,7 +557,6 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
       <h3>メンバーの現在地</h3>
       <label class="switch"><input type="checkbox" id="shareLoc"><span>自分の現在地をみんなに共有する</span></label>
       <label class="switch"><input type="checkbox" id="showTracks"><span>行動履歴（通った道）を表示する</span></label>
-      <label class="switch"><input type="checkbox" id="demoLoc"><span>ダミーデータで表示を試す（自分の画面だけ）</span></label>
       <div class="chips" id="memChips"></div>
       <p class="lead">送信されるのは、共有をオンにして、しおりを画面に開いている間だけです。閉じている間の移動は記録されません。</p>
       <button class="btn small ghost" id="clearLoc" type="button" style="justify-self:start">自分の履歴を消す</button>
@@ -1465,20 +1464,10 @@ function shareLoc(){
   (LOCS[who]=LOCS[who]||[]).push([me.lat,me.lng,now]); drawMembers();
 }
 function resumeShare(){ if(store.get("share",false)&&getMe()) startGps(false); }
-// 表示確認用のダミー。自分の画面だけに出し、どこにも送らない。
-const DEMO_COL=["#d81b60","#00897b","#8e44ad"];
-function demoLocs(){
-  const now=Date.now(), mk=(pts,endAgo,step)=>pts.map((q,i)=>[q[0],q[1],now-(endAgo+(pts.length-1-i)*step)*60000]);
-  return {
-    "ダミーたろう":mk([[34.3507,134.0468],[34.3420,134.0465],[34.3297,134.0444],[34.3105,134.0420],[34.2856,134.0403],[34.2700,134.0050],[34.2520,133.9700],[34.2258,133.9282]],3,12),
-    "ダミーはなこ":mk([[34.3507,134.0468],[34.3380,133.9900],[34.3250,133.9200],[34.3167,133.8606],[34.3020,133.8280],[34.2900,133.7970],[34.2600,133.7900],[34.2284,133.7870],[34.1860,133.8180]],12,15),
-    "ダミーじろう":mk([[34.3395,134.0515],[34.3420,134.0500],[34.3450,134.0490],[34.3470,134.0470]],50,6),
-  };
-}
 function drawMembers(){
-  const meName=getMe(), demo=store.get("demoLoc",false)?demoLocs():{}, ALLLOC=Object.assign({},LOCS,demo);
-  const names=[...S.members.filter(n=>LOCS[n]&&LOCS[n].length),...Object.keys(demo)], colorOf=n=>demo[n]?DEMO_COL[Object.keys(demo).indexOf(n)%3]:mcolor(n), box=$("#memChips"); box.textContent="";
-  $("#shareLoc").checked=!!store.get("share",false); $("#showTracks").checked=store.get("tracks",true)!==false; $("#demoLoc").checked=!!store.get("demoLoc",false);
+  const meName=getMe(), ALLLOC=LOCS;
+  const names=S.members.filter(n=>LOCS[n]&&LOCS[n].length), colorOf=mcolor, box=$("#memChips"); box.textContent="";
+  $("#shareLoc").checked=!!store.get("share",false); $("#showTracks").checked=store.get("tracks",true)!==false;
   if(!names.length) box.append(el("span",{className:"lead",textContent:"まだ誰も現在地を共有していません。"}));
   names.forEach(n=>{ const last=ALLLOC[n][ALLLOC[n].length-1]; const dot=el("i",{className:"dot"}); dot.style.background=colorOf(n);
     const b=el("button",{type:"button",className:"chip"},dot,el("span",{textContent:n+(n===meName?"（自分）":"")}),el("small",{textContent:ago(last[2])}));
@@ -1490,13 +1479,11 @@ function drawMembers(){
     if(tracks&&pts.length>1){ L.polyline(pts.map(q=>[q[0],q[1]]),{color:c,weight:5,opacity:.85,dashArray:"1 9",lineCap:"round"}).addTo(memLayer);
       pts.slice(0,-1).forEach(q=>L.circleMarker([q[0],q[1]],{radius:4,color:"#14173d",weight:1.5,fillColor:c,fillOpacity:1}).addTo(memLayer).bindPopup(el("div",{},el("b",{textContent:n}),el("br"),ago(q[2])+"にここ"))); }
     if(n===meName) return;
-    const face=el("div",{className:"mem"+(Date.now()-last[2]>30*60000?" stale":"")},el("b",{textContent:Array.from(n.replace(/^ダミー/,""))[0]||"?"}),el("span",{textContent:n})); face.style.setProperty("--c",c);
+    const face=el("div",{className:"mem"+(Date.now()-last[2]>30*60000?" stale":"")},el("b",{textContent:Array.from(n)[0]||"?"}),el("span",{textContent:n})); face.style.setProperty("--c",c);
     L.marker([last[0],last[1]],{icon:L.divIcon({className:"",html:face,iconSize:[34,34],iconAnchor:[17,17],popupAnchor:[0,-18]}),zIndexOffset:500,title:n})
       .addTo(memLayer).bindPopup(el("div",{},el("b",{textContent:n}),el("br"),"最後の共有: "+ago(last[2])));
   });
 }
-$("#demoLoc").addEventListener("change",()=>{ const on=$("#demoLoc").checked; store.set("demoLoc",on); drawMembers();
-  if(on&&map){ const d=demoLocs(); map.fitBounds(Object.values(d).flat().map(q=>[q[0],q[1]]),{padding:[30,30]}); } });
 $("#shareLoc").addEventListener("change",()=>{ const on=$("#shareLoc").checked; store.set("share",on); if(on){ startGps(false); shareLoc(); } });
 $("#showTracks").addEventListener("change",()=>{ store.set("tracks",$("#showTracks").checked); drawMembers(); });
 $("#clearLoc").addEventListener("click",()=>{ const b=$("#clearLoc"), who=getMe(); if(!who) return;
