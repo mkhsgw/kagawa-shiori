@@ -354,8 +354,9 @@ button.chip[aria-pressed="true"]{background:var(--dashi);color:var(--ai-deep);ro
 .cat-tag{font-size:17px;padding:1px 14px;border:2.5px solid var(--edge);border-radius:999px;background:var(--card);rotate:-2deg}
 .cat-tag.c1{background:var(--dashi);color:var(--ai-deep)}
 .cat-tag.c2{background:var(--men);color:var(--ai-deep)}
-.cat-tag.c3{background:var(--shu);color:var(--ai-deep)}
-.cat-tag.c4{background:var(--olive);color:var(--ai-deep)}
+.cat-tag.c3{background:var(--ai-2);color:var(--men)}
+.cat-tag.c4{background:var(--shu);color:var(--ai-deep)}
+.cat-tag.c5{background:var(--olive);color:var(--ai-deep)}
 .catsel{width:auto}
 /* ---- お店カード: うどんの絵と特徴 ---- */
 .bowlpic{flex:none;width:62px;display:grid;justify-items:center;gap:1px;rotate:-5deg}
@@ -733,7 +734,7 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
     <input id="spLink" inputmode="url" placeholder="GoogleマップのURL（ナビ用・なくてもOK）" autocomplete="off" aria-label="GoogleマップのURL">
     <div class="row"><label class="lead">開店 <input id="spOpen" type="time" style="width:auto"></label><label class="lead">閉店 <input id="spClose" type="time" style="width:auto"></label></div>
     <input id="spClosed" maxlength="20" placeholder="定休日（例: 日曜）" autocomplete="off" aria-label="定休日">
-    <select id="spCat" aria-label="カテゴリ"><option value="">カテゴリを選ぶ（なくてもOK）</option><option>出汁系</option><option>麺系</option><option>変わり種系</option><option>その他</option></select>
+    <select id="spCat" aria-label="カテゴリ"><option value="">カテゴリを選ぶ（なくてもOK）</option><option>出汁系</option><option>麺系</option><option>つけ系</option><option>変わり種系</option><option>その他</option></select>
     <input id="spFeat" maxlength="80" placeholder="お店の特徴（例: 釜玉発祥の店。庭で食べられる）" autocomplete="off" aria-label="お店の特徴">
     <input id="spOrder" maxlength="40" placeholder="おすすめの頼み方（例: ひやあつ小＋ちくわ天）" autocomplete="off" aria-label="おすすめの頼み方">
     <input id="spMemo" maxlength="60" placeholder="ひとことメモ" autocomplete="off" aria-label="メモ">
@@ -990,13 +991,18 @@ const fmtKm = d => d<1? Math.round(d*1000/10)*10+"m" : d.toFixed(d<10?1:0)+"km";
 
 /* ---------- うどんの絵: おすすめの頼み方から種類を選んで描く（写真ではなくイラスト） ---------- */
 function udonType(s){ const t=(s.order||"")+" "+(s.feature||"");
-  return /かまたま|釜玉/.test(t)?"kamatama":/しょうゆ|醤油/.test(t)?"shoyu":/あげ|きつね/.test(t)?"kitsune":/餅/.test(t)?"mochi":/肉/.test(t)?"niku":/天|エメラルド/.test(t)?"ten":/ぶっかけ/.test(t)?"bukkake":"kake"; }
-const UDON_NAME={kamatama:"釜玉",shoyu:"しょうゆ",kitsune:"きつね",mochi:"もち入り",niku:"肉うどん",ten:"天ぷらのせ",bukkake:"ぶっかけ",kake:"かけ"};
+  const o=s.order||"";   // まず「おすすめの頼み方」で決め、無ければ特徴とカテゴリから
+  const pick=x=>/バター/.test(x)?"butter":/カレー/.test(x)?"curry":/かまたま|釜玉/.test(x)?"kamatama":/しょうゆ|醤油/.test(x)?"shoyu":/かき揚げ|天|エメラルド/.test(x)?"ten":/あげ|きつね/.test(x)?"kitsune":/餅/.test(x)?"mochi":/肉/.test(x)?"niku":/つけ|ざる/.test(x)?"tsuke":/ぶっかけ/.test(x)?"bukkake":"";
+  return pick(o)||(o?"":pick(s.feature||""))||(s.category==="つけ系"?"tsuke":"kake"); }
+const UDON_NAME={butter:"釜バター",curry:"カレー",tsuke:"つけ",kamatama:"釜玉",shoyu:"しょうゆ",kitsune:"きつね",mochi:"もち入り",niku:"肉うどん",ten:"天ぷらのせ",bukkake:"ぶっかけ",kake:"かけ"};
 function bowlSvg(type){
-  const broth={kamatama:"#f6edd3",shoyu:"#f3e6c6",bukkake:"#b9803f"}[type]||"#e9b84c";
+  const broth={kamatama:"#f6edd3",butter:"#f6edd3",shoyu:"#f3e6c6",bukkake:"#b9803f",curry:"#a8641c",tsuke:"#e6d8a4"}[type]||"#e9b84c";
   const noodles="M25 45q12-13 25-2t25-4M23 56q14-10 27 0t27-3M29 67q11-8 21-1t21-3M33 34q10-8 17 0t15 0";
   const negi='<g fill="#5fa53a" stroke="#2f6b1c" stroke-width=".8"><circle cx="66" cy="38" r="3.2"/><circle cx="72" cy="46" r="2.6"/><circle cx="60" cy="31" r="2.6"/></g>';
   const top={
+    butter:'<rect x="40" y="41" width="20" height="20" rx="4" fill="#ffd54a" stroke="#d39a00" stroke-width="1.5" transform="rotate(-14 50 51)"/><g fill="#2b2b2b"><circle cx="34" cy="40" r="1.3"/><circle cx="66" cy="60" r="1.3"/><circle cx="62" cy="36" r="1.1"/><circle cx="38" cy="64" r="1.1"/><circle cx="52" cy="70" r="1.2"/><circle cx="70" cy="48" r="1"/></g>',
+    curry:'<g transform="rotate(-18 50 50)"><rect x="32" y="40" width="36" height="20" rx="4" fill="#e8a93c" stroke="#9a6412" stroke-width="1.8"/><path d="M41 40v20M50 40v20M59 40v20" stroke="#9a6412" stroke-width="1.4"/></g>',
+    tsuke:'<circle cx="71" cy="70" r="15" fill="#fff" stroke="#14173d" stroke-width="2.5"/><circle cx="71" cy="70" r="10.5" fill="#4a2c14"/><circle cx="68" cy="67" r="1.8" fill="#5fa53a"/><circle cx="74" cy="72" r="1.6" fill="#5fa53a"/>',
     kamatama:'<circle cx="50" cy="51" r="15" fill="#fffdf4" opacity=".92"/><circle cx="50" cy="51" r="9.5" fill="#ffb300" stroke="#e08a00" stroke-width="1.2"/>',
     shoyu:'<path d="M30 40q20 6 40-4M28 58q22-8 44 2" fill="none" stroke="#5a3414" stroke-width="2.2" stroke-linecap="round"/><path d="M30 68a9 9 0 0 1 16-6z" fill="#7cb342" stroke="#3f6b1c" stroke-width="1"/>',
     kitsune:'<rect x="30" y="38" width="38" height="26" rx="4" fill="#cf8f2e" stroke="#8a5a14" stroke-width="2" transform="rotate(-12 50 52)"/><path d="M36 48l26-5M38 56l26-5" stroke="#8a5a14" stroke-width="1.4"/>',
@@ -1004,7 +1010,7 @@ function bowlSvg(type){
     niku:'<g fill="#8a4b2a" stroke="#5a2e14" stroke-width="1"><path d="M34 44q8-6 14 0t10 4q-6 6-14 3t-10-7z"/><path d="M46 58q8-5 16 0q-4 7-12 5z"/><path d="M56 40q7-4 12 2q-5 5-11 2z"/></g>',
     ten:'<path d="M30 56q4-16 22-18t20 8q-2 14-20 16t-22-6z" fill="#edb84f" stroke="#b97f1a" stroke-width="1.6"/><path d="M38 52q6-6 12-2M50 56q6-6 12-3" fill="none" stroke="#b97f1a" stroke-width="1.2"/>',
   }[type]||"";
-  return `<svg viewBox="0 0 100 100" role="img" aria-label="${UDON_NAME[type]}うどんの絵"><circle cx="50" cy="50" r="48" fill="#14173d"/><circle cx="50" cy="50" r="43" fill="#fff"/><circle cx="50" cy="50" r="37" fill="${broth}"/><path d="${noodles}" fill="none" stroke="#c9a544" stroke-width="7.5" stroke-linecap="round"/><path d="${noodles}" fill="none" stroke="#f8e9b6" stroke-width="5" stroke-linecap="round"/>${top}${type==="mochi"||type==="shoyu"?"":negi}</svg>`;
+  return `<svg viewBox="0 0 100 100" role="img" aria-label="${UDON_NAME[type]}うどんの絵"><circle cx="50" cy="50" r="48" fill="#14173d"/><circle cx="50" cy="50" r="43" fill="#fff"/><circle cx="50" cy="50" r="37" fill="${broth}"/><path d="${noodles}" fill="none" stroke="#c9a544" stroke-width="7.5" stroke-linecap="round"/><path d="${noodles}" fill="none" stroke="#f8e9b6" stroke-width="5" stroke-linecap="round"/>${top}${/^(mochi|shoyu|tsuke|butter|curry)$/.test(type)?"":negi}</svg>`;
 }
 function thumbPic(s){ const b=el("span",{className:"bowlpic photo"},photoImg({id:s.thumb,caption:s.name+" のサムネ"},200)); if(s.kind==="shop") b.append(el("small",{textContent:UDON_NAME[udonType(s)]})); return b; }
 function bowlPic(s){ const t=udonType(s), b=el("span",{className:"bowlpic"}); b.innerHTML=bowlSvg(t); b.append(el("small",{textContent:UDON_NAME[t]})); return b; }
@@ -1036,8 +1042,8 @@ async function loadShopPhotos(s,box){
   }catch(e){ box.textContent=""; box.dataset.done=""; box.append(el("span",{className:"lead",textContent:"写真を読み込めませんでした。"})); }
 }
 
-const CATS=["出汁系","麺系","変わり種系","その他"];
-const CAT_NOTE={"出汁系":"だしを味わう店","麺系":"麺そのものが主役の店","変わり種系":"ここだけのメニューがある店","その他":"うどん以外や、どれにも当てはまらない場所","未分類":"カードを開くとカテゴリを選べます"};
+const CATS=["出汁系","麺系","つけ系","変わり種系","その他"];
+const CAT_NOTE={"出汁系":"だしを味わう店","麺系":"麺そのものが主役の店","つけ系":"つけ・ぶっかけ・おろしで食べる店","変わり種系":"ここだけのメニューがある店","その他":"うどん以外や、どれにも当てはまらない場所","未分類":"カードを開くとカテゴリを選べます"};
 
 /* ---------- 定休日の判定: 旅行中の各日に、その店へ行けるか ---------- */
 function dayStatus(s,d){
