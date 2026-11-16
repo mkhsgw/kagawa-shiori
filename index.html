@@ -319,6 +319,15 @@ ul.plain li span{min-width:0;flex:1}
 .pola.big img{aspect-ratio:auto;max-height:66dvh;object-fit:contain;background:#14173d}
 .pola.big span{font-size:17px;white-space:normal}
 [hidden]{display:none!important}
+/* ---- 保存中のクルクル（最前面に出して操作を止める） ---- */
+#busy:not(.on){display:none}
+#busy.on{display:grid}
+#busy{position:fixed;inset:0;z-index:5000;width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;padding:0;place-content:center;justify-items:center;gap:14px;
+  background:color-mix(in oklch,var(--ai-deep) 72%,#0000);color:var(--men);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);touch-action:none;cursor:wait}
+#busy::backdrop{background:none}
+#busy p{margin:0;font-family:var(--display);font-size:16px;letter-spacing:.1em}
+.spin{width:74px;aspect-ratio:1;border-radius:50%;background:conic-gradient(var(--dashi) 0 72%,var(--shu) 72% 78%,#0000 0);
+  -webkit-mask:radial-gradient(farthest-side,#0000 58%,#000 60%);mask:radial-gradient(farthest-side,#0000 58%,#000 60%);animation:spin .8s linear infinite}
 /* ---- 自由選択枠と投票 ---- */
 .tl .badge.voted{background:var(--olive);color:var(--ai-deep)}
 .fab{position:fixed;z-index:1400;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(84px + env(safe-area-inset-bottom,0px));width:58px;height:58px;border-radius:50%;
@@ -657,6 +666,8 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
   </div>
 </dialog>
 
+<div id="busy" popover="manual" role="status" aria-live="assertive"><div class="spin" aria-hidden="true"></div><p>保存中…</p></div>
+
 <nav><div class="bar" role="tablist">
   <span class="ind" aria-hidden="true"></span>
   <button type="button" role="tab" data-tab="plan" aria-selected="true">行程</button>
@@ -960,9 +971,22 @@ function toDays(rows){
 }
 
 async function call(body){
-  const r = body ? await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({key:API_KEY,...body})})
-                 : await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({key:API_KEY,action:"state"})});
-  const j=await r.json(); if(!j.ok) throw new Error(j.error||"error"); return j;
+  // 40秒返事がなければあきらめる（クルクルが出たままにならないように）
+  const ctl=new AbortController(), tm=setTimeout(()=>ctl.abort(),40000);
+  try{
+    const r=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({key:API_KEY,action:"state",...(body||{})}),signal:ctl.signal});
+    const j=await r.json(); if(!j.ok) throw new Error(j.error||"error"); return j;
+  }finally{ clearTimeout(tm); }
+}
+// 保存中のクルクル。出ている間は画面を触れない。
+let busyN=0;
+function busy(d){
+  busyN=Math.max(0,busyN+d); const b=$("#busy"), on=busyN>0;
+  // モーダルが開いているときはその中に入れる（外に置くと、モーダルの仕様で触れてしまう）
+  const host=(on&&document.querySelector("dialog[open]"))||document.body;
+  if(on&&b.parentNode!==host){ try{ if(b.matches(":popover-open")) b.hidePopover(); }catch(e){} host.append(b); }
+  b.classList.toggle("on",on);
+  try{ const open=b.matches(":popover-open"); if(on&&!open) b.showPopover(); if(!on&&open) b.hidePopover(); }catch(e){ /* popover 非対応なら通常の重ね表示 */ }
 }
 function applyState(j){
   S=norm(j); PHOTOS=j.photos||[]; store.set("cloud",j);
@@ -984,21 +1008,21 @@ async function refresh(){
   renderSync();
 }
 // 画面は先に書き換え、送信は1件ずつ順番に。全部送り終えたらサーバーの内容で上書きする。
-function write(body,localFn){
+function write(body,localFn,quiet){
   localFn();
   if(!API_URL){ store.set("shared",S); renderShared(); return Promise.resolve(true); }
   const cached=store.get("cloud",null); if(cached) store.set("cloud",{...cached,members:S.members,exps:S.exps,udon:S.udon});  // 送信中に開き直しても消えないように
-  renderShared(); pending++; syncState="saving"; renderSync();
+  renderShared(); pending++; syncState="saving"; renderSync(); if(!quiet) busy(1);
   const done=chain.then(()=>call(body)).then(j=>{ pending--; if(!pending){ applyState(j); syncState="cloud"; renderSync(); } return true; },
     ()=>{ pending--; syncState="error"; renderSync(); sigA=sigP=sigV=""; if(!pending) setTimeout(refresh,1500); return false; });   // 失敗したら手元の先行表示を捨てて読み直す
-  chain=done; return done;
+  chain=done; if(!quiet) done.then(()=>busy(-1)); return done;
 }
 const mut={
   addMember:n=>write({action:"addMember",name:n},()=>{ if(!S.members.includes(n)) S.members.push(n); }),
   delMember:n=>write({action:"delMember",name:n},()=>{ S.members=S.members.filter(m=>m!==n); }),
   addExp:e=>write({action:"addExp",...e},()=>{ S.exps.push(e); }),
   delExp:e=>write({action:"delExp",id:e.id},()=>{ S.exps=S.exps.filter(x=>x.id!==e.id); }),
-  udon:(n,d)=>write({action:"udon",name:n,delta:d},()=>{ S.udon[n]=Math.max(0,(S.udon[n]||0)+d); }),
+  udon:(n,d)=>write({action:"udon",name:n,delta:d},()=>{ S.udon[n]=Math.max(0,(S.udon[n]||0)+d); },true),   // 連打するので止めない
 };
 /* ---------- ログイン: あいことば → ニックネーム ---------- */
 let polling=false;
