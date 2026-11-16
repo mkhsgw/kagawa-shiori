@@ -255,6 +255,10 @@ details.spot[open] summary::after{rotate:135deg}
 .receipt .r span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
 .receipt .tag{font-size:11.5px;border:1.5px solid currentColor;padding:0 5px}
 .receipt .tag.due{background:#14173d;color:#fff}
+.receipt p{margin:0}
+.receipt .rnote{font-size:13px;line-height:1.6}
+.receipt .rhead{text-align:center;letter-spacing:.3em;font-size:13px}
+.receipt .rsub{font-size:12px;opacity:.7;margin-top:-6px}
 .receipt hr{border:0;border-top:2px dashed #14173d;width:100%;margin:2px 0}
 .receipt .sum{font-size:20px}
 .form{display:grid;gap:8px;grid-template-columns:1fr 1fr}
@@ -599,9 +603,6 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
   </div></section>
 
   <section class="tab" id="tab-tools" hidden><div class="wrap">
-    <h2>予約済みの費用</h2>
-    <div class="receipt-wrap"><div class="receipt" id="receipt"></div></div>
-
     <h2>割り勘</h2>
     <div class="card">
       <h3>立て替えを記録</h3>
@@ -618,10 +619,8 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
       </form>
       <p class="lead" id="expHint" role="status"></p>
     </div>
-    <div class="card">
-      <h3>精算</h3>
-      <ul class="plain" id="settleList"></ul>
-      <div class="scroll"><table class="bal" id="balTable"></table></div>
+    <div class="receipt-wrap"><div class="receipt" id="settleReceipt"></div></div>
+    <div class="row">
       <label class="row lead">端数の丸め
         <select id="unit" style="width:auto"><option value="1">1円単位</option><option value="10">10円単位</option><option value="100">100円単位</option></select>
       </label>
@@ -1360,7 +1359,7 @@ $("#udMinus").addEventListener("click",()=>bump(-1));
 
 /* ---------- 費用（レシート） ---------- */
 function renderCosts(){
-  const t=$("#receipt"); t.textContent=""; let sum=0, due=0;
+  const t=$("#receipt"); if(!t) return; t.textContent=""; let sum=0, due=0;
   const line=(name,val,tag,cls)=>{ const r=el("div",{className:"r"+(cls?" "+cls:"")},el("span",{textContent:name})); if(tag) r.append(tag); r.append(el("i"),el("span",{textContent:val})); return r; };
   t.append(el("h3",{textContent:"領収書"}),el("hr"));
   COSTS.forEach(c=>{ sum+=c.yen; if(!c.paid) due+=c.yen;
@@ -1398,21 +1397,26 @@ function renderSplit(){
   exps.slice().reverse().forEach(e=>{ const t=targets(e); const who=t.length===members.length?"全員":t.join("・");
     const x=el("button",{className:"x",type:"button",textContent:"×"}); x.setAttribute("aria-label","この記録を削除"); x.addEventListener("click",()=>mut.delExp(e));
     xl.append(el("li",{},el("span",{},e.memo||"（内容なし）",el("small",{textContent:`${e.payer} が払った → ${who} の分`})),el("span",{className:"settle",textContent:yen(e.yen)}),x)); });
-  // 精算
-  const sl=$("#settleList"), bt=$("#balTable"); sl.textContent=""; bt.textContent="";
-  if(members.length<2||!exps.length){ sl.append(el("li",{},el("span",{className:"lead",textContent:"メンバー2人以上と記録があると、誰が誰にいくら払えばいいかを表示します。"}))); return; }
+  // 精算（領収書の見た目で出す）
+  const rc=$("#settleReceipt"); rc.textContent="";
+  const line=(name,val,cls)=>el("div",{className:"r"+(cls?" "+cls:"")},el("span",{textContent:name}),el("i"),el("span",{textContent:val}));
+  rc.append(el("h3",{textContent:"精算書"}),el("hr"));
+  if(members.length<2||!exps.length){ rc.append(el("p",{className:"rnote",textContent:"メンバー2人以上と記録があると、誰が誰にいくら払えばいいかをここに出します。"})); return; }
   const paid={}, owe={}; members.forEach(m=>{ paid[m]=0; owe[m]=0; });
   exps.forEach(e=>{ if(!(e.payer in paid)) return; const t=targets(e); paid[e.payer]+=e.yen; t.forEach(m=>{ owe[m]+=e.yen/t.length; }); });
   const unit=Number(store.get("unit",1))||1; $("#unit").value=String(unit);
+  rc.append(line(`記録 ${exps.length}件の合計`,yen(exps.reduce((a,e)=>a+e.yen,0))),el("hr"));
   const D=members.filter(m=>paid[m]-owe[m]<-0.5).map(m=>({m,v:owe[m]-paid[m]})), C=members.filter(m=>paid[m]-owe[m]>0.5).map(m=>({m,v:paid[m]-owe[m]}));
   let count=0;
   while(D.length&&C.length){ D.sort((a,b)=>b.v-a.v); C.sort((a,b)=>b.v-a.v);
     const d=D[0], c=C[0], pay=Math.min(d.v,c.v), shown=Math.round(pay/unit)*unit;
-    if(shown>0){ count++; sl.append(el("li",{className:"pay"},el("span",{},el("b",{textContent:d.m})," → ",el("b",{textContent:c.m})),el("span",{className:"settle",textContent:yen(shown)}))); }
+    if(shown>0){ count++; rc.append(line(`${d.m} → ${c.m}`,yen(shown),"sum")); }
     d.v-=pay; c.v-=pay; if(d.v<0.5) D.shift(); if(c.v<0.5) C.shift(); }
-  if(!count) sl.append(el("li",{},el("span",{textContent:"精算は不要です。"})));
-  bt.append(el("tr",{},el("th",{textContent:"名前"}),el("th",{textContent:"払った"}),el("th",{textContent:"自分の分"}),el("th",{textContent:"差し引き"})));
-  members.forEach(m=>{ const v=paid[m]-owe[m]; bt.append(el("tr",{},el("td",{textContent:m}),el("td",{textContent:yen(paid[m])}),el("td",{textContent:yen(owe[m])}),el("td",{className:v>0.5?"plus":v<-0.5?"minus":"",textContent:(v>0.5?"+":"")+yen(v)}))); });
+  if(!count) rc.append(el("p",{className:"rnote",textContent:"精算は不要です。"}));
+  rc.append(el("hr"),el("p",{className:"rhead",textContent:"うちわけ"}));
+  members.forEach(m=>{ const v=paid[m]-owe[m];
+    rc.append(line(m,(v>0.5?"+":"")+yen(v)),el("p",{className:"rsub",textContent:`払った ${yen(paid[m])} ／ 自分の分 ${yen(owe[m])}`})); });
+  rc.append(el("hr"),el("p",{className:"rnote",textContent:"＋は受け取る人、−は払う人です。"}));
 }
 $("#memberForm").addEventListener("submit",ev=>{ ev.preventDefault(); const v=$("#memberName").value.trim().replace(/[,、]/g,""); if(!v) return;
   $("#memberHint").textContent=""; mut.addMember(v); $("#memberName").value=""; });
