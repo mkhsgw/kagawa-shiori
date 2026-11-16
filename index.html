@@ -319,6 +319,28 @@ ul.plain li span{min-width:0;flex:1}
 .pola.big img{aspect-ratio:auto;max-height:66dvh;object-fit:contain;background:#14173d}
 .pola.big span{font-size:17px;white-space:normal}
 [hidden]{display:none!important}
+/* ---- ホームの写真: 横にめくる列（中央に来た1枚が大きくなる）と一覧 ---- */
+.tl{grid-template-columns:minmax(0,1fr)}
+.tl li{min-width:0}
+.tl li.past.has-ph{opacity:1}
+.reel{display:grid;gap:4px;min-width:0;margin-top:8px}
+.reel-strip{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:10px 6px 14px;margin-inline:-6px;scrollbar-width:none;overscroll-behavior-x:contain}
+.reel-strip::-webkit-scrollbar{display:none}
+.reel-card{flex:0 0 70%;max-width:270px;scroll-snap-align:center;display:grid;gap:2px;background:#fff;color:#14173d;border:0;padding:7px 7px 9px;text-align:left;font-family:var(--dot);box-shadow:4px 4px 0 var(--edge)}
+.reel-card:only-child{flex-basis:88%;max-width:340px}
+.reel-card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;background:#d9dde8}
+.reel-card span{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reel-card small{font-size:11px;opacity:.7}
+.reel-card:nth-child(odd){rotate:-1.5deg}.reel-card:nth-child(even){rotate:1.5deg}
+@supports (animation-timeline:view()){ @media (prefers-reduced-motion:no-preference){
+  .reel-card:not(:only-child){animation:reelIn linear both;animation-timeline:view(inline)}
+}}
+@keyframes reelIn{0%{scale:.8;opacity:.5}50%{scale:1;opacity:1}100%{scale:.8;opacity:.5}}
+.reel-more{justify-self:start;background:none;border:0;padding:0;font-family:var(--display);font-size:12.5px;color:var(--ink);text-decoration:underline;text-decoration-color:var(--shu);text-decoration-thickness:2px;text-underline-offset:3px}
+.loose{position:relative;z-index:1;display:grid;gap:2px;min-width:0}
+.gal{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.gal button{padding:4px;background:#fff;border:2px solid var(--edge)}
+.gal img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:#d9dde8}
 /* 帯は画面より広いので、外側の箱で左右を切る（横スクロールとモーダルのはみ出し防止） */
 .tick-clip{overflow:hidden;position:relative;z-index:3;margin-top:-22px;padding-block:10px}
 .bs{left:0;right:0}
@@ -634,6 +656,14 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
   </div></section>
 </main>
 
+<dialog class="bs" id="galDlg" aria-labelledby="galTitle">
+  <div class="sheet">
+    <div class="row"><h3 id="galTitle" style="flex:1"></h3><span class="lead" id="galCount"></span><button class="btn small ghost" id="galClose" type="button">とじる</button></div>
+    <div class="gal" id="galGrid"></div>
+    <button class="btn small ghost" id="galAdd" type="button" style="justify-self:start">写真を追加する</button>
+  </div>
+</dialog>
+
 <dialog class="bs" id="spotDlg" aria-labelledby="spotTitle">
   <form class="sheet" id="spotForm">
     <div class="row"><h3 id="spotTitle" style="flex:1">場所を追加</h3><button class="btn small ghost" id="spotClose" type="button">とじる</button></div>
@@ -685,7 +715,7 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
 
 <nav><div class="bar" role="tablist">
   <span class="ind" aria-hidden="true"></span>
-  <button type="button" role="tab" data-tab="plan" aria-selected="true">行程</button>
+  <button type="button" role="tab" data-tab="plan" aria-selected="true">ホーム</button>
   <button type="button" role="tab" data-tab="map" aria-selected="false">地図</button>
   <button type="button" role="tab" data-tab="spots" aria-selected="false">場所</button>
   <button type="button" role="tab" data-tab="udon" aria-selected="false">うどん</button>
@@ -794,6 +824,34 @@ function ticketEl(d,e){
   const t=el("div",{className:"ticket"},main,stub); t.setAttribute("aria-label",`${e.what} ${k.dep}発 ${k.arr}着`);
   return el("div",{className:"ticket-wrap"},t);
 }
+// 写真を、撮った時刻（と場所）から予定に振り分ける
+function photoBuckets(){
+  const by={}, loose=[]; if(!ALL.length) return {by,loose};
+  const y=DAYS[0].date.slice(0,4);
+  PHOTOS.forEach(p=>{ const m=String(p.time||"").match(/^(\d{2})\/(\d{2}) (\d{2}):(\d{2})/); let i=-1;
+    if(m){ const date=`${y}-${m[1]}-${m[2]}`, t=new Date(`${date}T${m[3]}:${m[4]}:00+09:00`);
+      if(p.spot) ALL.forEach((e,k)=>{ if(e.day.date===date&&e.spot===p.spot&&(i<0||e.when<=t)) i=k; });   // 場所が合う予定を優先
+      if(i<0&&t>=ALL[0].when) ALL.forEach((e,k)=>{ if(e.when<=t) i=k; }); }                                 // なければ、その時刻にやっていた予定
+    if(i<0) loose.push(p); else (by[i]=by[i]||[]).push(p); });
+  return {by,loose};
+}
+// 横にめくれる写真の列。押すと一覧が開く。
+function reel(ph,title){
+  const strip=el("div",{className:"reel-strip"});
+  ph.forEach(p=>{ const b=el("button",{type:"button",className:"reel-card"},photoImg(p,600),el("span",{textContent:p.caption||"　"}),el("small",{textContent:p.by}));
+    b.setAttribute("aria-label",`${title} の写真を一覧で見る`); b.addEventListener("click",()=>openGallery(ph,title)); strip.append(b); });
+  const more=el("button",{type:"button",className:"reel-more",textContent:`${ph.length}枚 ・ 一覧で見る`}); more.addEventListener("click",()=>openGallery(ph,title));
+  return el("div",{className:"reel"},strip,more);
+}
+function openGallery(ph,title){
+  $("#galTitle").textContent=title; $("#galCount").textContent=ph.length+"枚";
+  const g=$("#galGrid"); g.textContent="";
+  ph.forEach(p=>{ const b=el("button",{type:"button"},photoImg(p,400)); b.setAttribute("aria-label",(p.caption||"写真")+" を大きく表示"); b.addEventListener("click",()=>openViewer(p)); g.append(b); });
+  if(!$("#galDlg").open) $("#galDlg").showModal();
+}
+$("#galClose").addEventListener("click",()=>$("#galDlg").close());
+$("#galDlg").addEventListener("click",ev=>{ if(ev.target===$("#galDlg")) $("#galDlg").close(); });
+$("#galAdd").addEventListener("click",ev=>{ $("#galDlg").close(); showTab("photo",ev); });
 let selDay=null;
 function evLi(d,e,i,state,now){
   const li=el("li",{className:[state,e.open?"open":""].join(" ").trim()}); li.dataset.i=i;
@@ -827,15 +885,18 @@ function renderPlan(){
     const b=el("button",{type:"button",className:("daytab "+st).trim()},el("b",{textContent:d.label}),el("small",{textContent:d.dow+(st==="today"?"・きょう":st==="done"?"・済":"")}));
     b.setAttribute("aria-pressed",String(d.date===selDay)); b.addEventListener("click",()=>{ selDay=d.date; renderPlan(); }); tabs.append(b); });
   const d=DAYS.find(x=>x.date===selDay); let base=0; for(const x of DAYS){ if(x===d) break; base+=x.events.length; }
-  const ul=el("ul",{className:"tl"}), pastUl=el("ul",{className:"tl pasts"});
+  const ul=el("ul",{className:"tl"}), pastUl=el("ul",{className:"tl pasts"}), B=photoBuckets();
   d.events.forEach((e,k)=>{ const i=base+k;
     const state=!started?"":(over||i<ci)?"past":i===ci?"current":i===ci+1?"next":"";
-    (state==="past"?pastUl:ul).append(evLi(d,e,i,state,now)); });
+    const li=evLi(d,e,i,state,now), ph=B.by[i];
+    if(ph){ li.classList.add("has-ph"); li.append(reel(ph,`${e.t} ${e.what}`)); }
+    (state==="past"&&!ph?pastUl:ul).append(li); });   // 写真のある予定は、済んでもたたまずに残す
   const num=el("div",{className:"day-num",textContent:d.label.split("/")[1]}); num.setAttribute("aria-hidden","true");
   const day=el("div",{className:"day"},num,el("div",{className:"day-title"},el("h3",{textContent:d.title||`${d.label}（${d.dow}）`}),el("div",{className:"wx",id:"wx-"+d.date})));
   // 済んだ予定は1行にたたむ
   if(pastUl.children.length) day.append(el("details",{className:"pastbox"},el("summary",{textContent:`おわった予定 ${pastUl.children.length}件`}),pastUl));
   if(ul.children.length) day.append(ul); else day.append(el("p",{className:"lead",textContent:"この日の予定はすべて終わりました。"}));
+  if(B.loose.length) root.append(el("div",{className:"loose"},el("h3",{textContent:"旅の前の写真"}),reel(B.loose,"旅の前の写真")));
   root.append(tabs,day);
   loadWeather();
 }
@@ -1015,7 +1076,7 @@ function applyState(j){
     if(j.plan&&j.plan.length){ const d=toDays(j.plan); if(d.length) DAYS=d; }
     if(j.costs){ COSTS=j.costs.filter(c=>c.name).map(c=>({name:c.name,yen:Number(String(c.yen).replace(/[^\d.]/g,""))||0,paid:c.paid!=="現地払い"})); renderCosts(); }
     ALL=buildAll(); renderPlan(); drawMarkers(false); }
-  if(p!==sigP){ sigP=p; renderSpots(); renderPhotos(); }
+  if(p!==sigP){ sigP=p; renderSpots(); renderPhotos(); renderPlan(); }
   if(j.locs){ const l=JSON.stringify(j.locs); if(l!==sigL){ sigL=l; LOCS=j.locs; } }
   { const v=JSON.stringify([j.cands,j.votes,j.drive]); if(v!==sigV){ sigV=v; CANDS=j.cands||[]; VOTES=j.votes||[]; DRIVE={}; (j.drive||[]).forEach(x=>{ DRIVE[x[0]+">"+x[1]]=x[2]; }); renderPlan(); if($("#slotDlg").open) renderSlot(); } }
   renderShared(); renderNow(); drawMembers();
@@ -1128,7 +1189,8 @@ $("#viewClose").addEventListener("click",()=>$("#viewer").close());
 $("#viewer").addEventListener("click",ev=>{ if(ev.target===$("#viewer")) $("#viewer").close(); });
 $("#viewDel").addEventListener("click",()=>{ const d=$("#viewDel");
   if(!d.dataset.armed){ d.dataset.armed="1"; d.textContent="もう一度押すと削除"; return; }
-  const p=viewing; $("#viewer").close(); write({action:"delPhoto",id:p.id},()=>{ PHOTOS=PHOTOS.filter(x=>x.id!==p.id); sigP=""; renderSpots(); renderPhotos(); }); });
+  const p=viewing; $("#viewer").close(); if($("#galDlg").open) $("#galDlg").close();
+  write({action:"delPhoto",id:p.id},()=>{ PHOTOS=PHOTOS.filter(x=>x.id!==p.id); sigP=""; renderSpots(); renderPhotos(); renderPlan(); }); });
 
 /* ---------- 自由選択枠: 候補を出して投票し、1位を行程に入れる ---------- */
 let CANDS=[], VOTES=[], DRIVE={}, sigV="", curSlot=null;
