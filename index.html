@@ -1420,8 +1420,11 @@ function renderSlot(){
     vb.addEventListener("click",()=>{ const to=mine===x.spot?"":x.spot;
       write({action:"vote",slot:e.id,name:me,spot:to},()=>{ VOTES=VOTES.filter(v=>!(v.slot===e.id&&v.name===me)); if(to) VOTES.push({slot:e.id,name:me,spot:to}); renderSlot(); renderPlan(); }); });
     const row=el("div",{className:"row"},vb,el("a",{className:"btn small ghost",href:gmapUrl(s),target:"_blank",rel:"noopener",textContent:"地図 ↗"}));
-    if(!x.who.length&&s.by===me){ const del=el("button",{className:"x",type:"button",textContent:"取り下げる"}); del.style.fontSize="12.5px";
-      del.addEventListener("click",()=>write({action:"delCand",slot:e.id,spot:x.spot},()=>{ CANDS=CANDS.filter(c=>!(c.slot===e.id&&c.spot===x.spot)); renderSlot(); })); row.append(del); }
+    { // 候補から外す（誰でも。入っていた票も一緒に消える）
+      const del=el("button",{className:"x",type:"button",textContent:"候補から外す"}); del.style.fontSize="12.5px";
+      del.addEventListener("click",()=>{ if(!del.dataset.armed){ del.dataset.armed="1"; del.textContent=x.who.length?`${x.who.length}票ごと外す？もう一度押す`:"もう一度押すと外します"; return; }
+        write({action:"delCand",slot:e.id,spot:x.spot},()=>{ CANDS=CANDS.filter(c=>!(c.slot===e.id&&c.spot===x.spot)); VOTES=VOTES.filter(v=>!(v.slot===e.id&&v.spot===x.spot)); renderSlot(); renderPlan(); }); });
+      row.append(del); }
     card.append(row); box.append(card); });
   // 候補を出す
   const pick=$("#candPick"), used=new Set(t.map(x=>x.spot)); pick.textContent="";
