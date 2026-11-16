@@ -323,6 +323,12 @@ ul.plain li span{min-width:0;flex:1}
 .pola.big img{aspect-ratio:auto;max-height:66dvh;object-fit:contain;background:#14173d}
 .pola.big span{font-size:17px;white-space:normal}
 [hidden]{display:none!important}
+/* ---- 定休日: 行けない店はグレーに ---- */
+.cl{display:inline-block;font-size:11px;font-weight:900;line-height:1.5;border:1.5px solid var(--shu);color:var(--shu);border-radius:999px;padding:0 7px;margin:3px 4px 0 0}
+.cl.never{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+details.spot.off{filter:grayscale(1);opacity:.55;box-shadow:none;rotate:0deg}
+details.spot.off[open]{opacity:.85}
+.pin.off{filter:grayscale(1);opacity:.55}
 /* ---- ホームの写真: 横にめくる列（中央に来た1枚が大きくなる）と一覧 ---- */
 .tl{grid-template-columns:minmax(0,1fr)}
 .tl li{min-width:0}
@@ -920,16 +926,32 @@ function km(a,b){ const R=6371,r=x=>x*Math.PI/180; const dLa=r(b.lat-a.lat),dLo=
 const distTo = s => me&&s.lat!=null ? km(me,s) : null;
 const fmtKm = d => d<1? Math.round(d*1000/10)*10+"m" : d.toFixed(d<10?1:0)+"km";
 
+/* ---------- 定休日の判定: 旅行中の各日に、その店へ行けるか ---------- */
+function dayStatus(s,d){
+  if(s.kind!=="shop") return "";
+  if(s.closedDays.includes(d.dow)) return "定休";
+  const op=mins(s.open), cl=mins(s.close); if(op==null||cl==null||!d.events.length) return "";
+  const a=mins(d.events[0].t), b=mins(d.events[d.events.length-1].t);
+  return (op<b&&cl>a)?"":"時間外";      // その日の行動時間（最初の予定〜最後の予定）と営業時間が重ならない
+}
+const neverOpen=s=>s.kind==="shop"&&DAYS.length>0&&DAYS.every(d=>dayStatus(s,d));
+function closedChips(s,off){
+  const out=[]; if(s.kind!=="shop") return out;
+  if(off) out.push(el("span",{className:"cl never",textContent:"旅行中は行けない"}));
+  DAYS.forEach(d=>{ const st=dayStatus(s,d); if(st==="定休"||(st&&off)) out.push(el("span",{className:"cl",textContent:`${d.label.split("/")[1]}日(${d.dow})${st}`})); });
+  return out.length?[el("br"),...out]:out;
+}
+
 /* ---------- スポット ---------- */
 function renderSpots(){
   const shop=$("#shopList"), base=$("#baseList"); shop.textContent=""; base.textContent="";
   const open=new Set(store.get("openSpots",[]));
-  SPOTS.forEach(s=>{
+  SPOTS.slice().sort((a,b)=>neverOpen(a)-neverOpen(b)).forEach(s=>{   // 行けない店は後ろへ
     const k=KIND[s.kind]; const d=distTo(s);
-    const det=el("details",{className:"spot",id:"spot-"+s.id}); det.open=open.has(s.id);
+    const off=neverOpen(s), det=el("details",{className:"spot"+(off?" off":""),id:"spot-"+s.id}); det.open=open.has(s.id);
     det.addEventListener("toggle",()=>{ const o=new Set(store.get("openSpots",[])); det.open?o.add(s.id):o.delete(s.id); store.set("openSpots",[...o]); });
     const tag=el("span",{className:"kind",textContent:k.label}); tag.style.background=k.color;
-    det.append(el("summary",{},tag,el("span",{className:"spot-name",textContent:s.name}),el("span",{className:"dist",textContent:d!=null?fmtKm(d):""})));
+    det.append(el("summary",{},tag,el("span",{className:"spot-name"},s.name,...closedChips(s,off)),el("span",{className:"dist",textContent:d!=null?fmtKm(d):""})));
     const body=el("div",{className:"spot-body"});
     if(s.order) body.append(el("div",{className:"order",textContent:"おすすめの頼み方: "+s.order}));
     const dl=el("dl"); Object.entries(s.info||{}).forEach(([a,b])=>dl.append(el("dt",{textContent:a}),el("dd",{textContent:b}))); body.append(dl);
@@ -958,7 +980,7 @@ function drawMarkers(fit){
   SPOTS.forEach(s=>{
     if(s.lat==null) return;
     const k=KIND[s.kind];
-    const icon=L.divIcon({className:"",html:`<div class="pin" style="background:${k.color}"></div>`,iconSize:[28,28],iconAnchor:[14,28],popupAnchor:[0,-26]});
+    const icon=L.divIcon({className:"",html:`<div class="pin${neverOpen(s)?" off":""}" style="background:${k.color}"></div>`,iconSize:[28,28],iconAnchor:[14,28],popupAnchor:[0,-26]});
     const pop=el("div"); pop.append(el("b",{textContent:s.name}),el("br"));
     const a=el("a",{href:"#",textContent:"詳細を見る"}); a.addEventListener("click",ev=>{ev.preventDefault(); showTab("spots",ev); const d=document.getElementById("spot-"+s.id); if(d){d.open=true; setTimeout(()=>d.scrollIntoView({block:"center"}),650);} });
     pop.append(a," ・ ",el("a",{href:gmapUrl(s),target:"_blank",rel:"noopener",textContent:"ナビ"}));
@@ -1280,7 +1302,7 @@ function renderSlot(){
   // 候補を出す
   const pick=$("#candPick"), used=new Set(t.map(x=>x.spot)); pick.textContent="";
   pick.append(el("option",{value:"",textContent:"お店リストから選ぶ"}));
-  SPOTS.filter(s=>s.kind==="shop"&&!used.has(s.id)).forEach(s=>pick.append(el("option",{value:s.id,textContent:s.name})));
+  SPOTS.filter(s=>s.kind==="shop"&&!used.has(s.id)).forEach(s=>{ const st=dayStatus(s,d); pick.append(el("option",{value:s.id,textContent:s.name+(st?`（この日は${st}）`:""),disabled:st==="定休"})); });
   // 決定
   const top=t.filter(x=>x.who.length&&x.who.length===t[0].who.length), db=$("#slotDecide");
   db.disabled=!top.length; db.dataset.armed="";
