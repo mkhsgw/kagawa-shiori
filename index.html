@@ -323,6 +323,11 @@ ul.plain li span{min-width:0;flex:1}
 .pola.big img{aspect-ratio:auto;max-height:66dvh;object-fit:contain;background:#14173d}
 .pola.big span{font-size:17px;white-space:normal}
 [hidden]{display:none!important}
+/* ---- 場所の検索 ---- */
+.searchbox{display:grid;gap:4px;position:sticky;top:calc(10px + env(safe-area-inset-top,0px));z-index:6}
+.searchbox input{border-radius:999px;padding:11px 18px;background:var(--card);box-shadow:3px 3px 0 var(--edge);font-weight:700}
+.searchbox .lead:empty{display:none}
+.searchbox .lead{justify-self:start;background:var(--bg);border-radius:999px;padding:0 10px}
 /* ---- 自分のアイコン ---- */
 .avatar{--s:64px;flex:none;width:var(--s);height:var(--s);border-radius:50%;overflow:hidden;display:grid;place-items:center;background:var(--c,var(--line));color:#fff;
   border:3px solid var(--edge);box-shadow:3px 3px 0 var(--edge);font-family:var(--display);font-size:calc(var(--s)*.42);line-height:1}
@@ -574,6 +579,10 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
   </div></section>
 
   <section class="tab" id="tab-spots" hidden><button class="fab" id="fabSpot" type="button" aria-label="場所を追加">＋</button><div class="wrap">
+    <div class="searchbox">
+      <input id="spotSearch" type="search" placeholder="店名・特徴・メニュー・地名で検索" autocomplete="off" enterkeyhint="search" aria-label="場所を検索">
+      <span class="lead" id="spotCount" role="status"></span>
+    </div>
     <h2>お店</h2>
     <div class="chips" id="shopFilter"></div>
     <div class="spots" id="shopList"></div>
@@ -1045,6 +1054,13 @@ async function loadShopPhotos(s,box){
 const CATS=["出汁系","麺系","つけ系","変わり種系","その他"];
 const CAT_NOTE={"出汁系":"だしを味わう店","麺系":"麺そのものが主役の店","つけ系":"つけ・ぶっかけ・おろしで食べる店","変わり種系":"ここだけのメニューがある店","その他":"うどん以外や、どれにも当てはまらない場所","未分類":"カードを開くとカテゴリを選べます"};
 
+/* ---------- 場所の検索: ひらがな・カタカナ、全角・半角、大文字・小文字を区別しない ---------- */
+const normText=t=>String(t||"").normalize("NFKC").toLowerCase().replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60));
+function spotText(s){
+  return normText([s.name,s.feature,s.order,s.category,s.gmap,KIND[s.kind].label,s.kind==="shop"?UDON_NAME[udonType(s)]:"",...(s.tips||[]),...Object.entries(s.info||{}).map(x=>x.join(" ")),s.by].join(" "));
+}
+$("#spotSearch").addEventListener("input",()=>renderSpots());
+
 /* ---------- 定休日の判定: 旅行中の各日に、その店へ行けるか ---------- */
 function dayStatus(s,d){
   if(s.kind!=="shop") return "";
@@ -1065,7 +1081,10 @@ function closedChips(s,off){
 function renderSpots(){
   const shop=$("#shopList"), base=$("#baseList"), groups={}; shop.textContent=""; base.textContent="";
   const open=new Set(store.get("openSpots",[]));
+  const words=normText($("#spotSearch").value).split(/\s+/).filter(Boolean); let hits=0;
   SPOTS.slice().sort((a,b)=>neverOpen(a)-neverOpen(b)).forEach(s=>{   // 行けない店は後ろへ
+    if(words.length){ const hay=spotText(s); if(!words.every(x=>hay.includes(x))) return; }
+    hits++;
     const k=KIND[s.kind]; const d=distTo(s);
     const off=neverOpen(s), det=el("details",{className:"spot"+(off?" off":""),id:"spot-"+s.id}); det.open=open.has(s.id);
     det.addEventListener("toggle",()=>{ const o=new Set(store.get("openSpots",[])); det.open?o.add(s.id):o.delete(s.id); store.set("openSpots",[...o]); });
@@ -1113,7 +1132,10 @@ function renderSpots(){
   names.filter(c=>!names.includes(cur)||c===cur).forEach(c=>{
     shop.append(el("h3",{className:"cat-head"},el("span",{className:"cat-tag c"+(CATS.indexOf(c)+1),textContent:c}),el("small",{textContent:CAT_NOTE[c]||""})));
     groups[c].forEach(x=>shop.append(x)); });
-  if(!shop.children.length){ const e=el("div",{className:"empty"}); e.append(el("b",{textContent:"お店はこれから追加します。"}),el("br"),"行きたい店が決まったら、営業時間・定休日・おすすめの頼み方つきでここに並びます。"); shop.append(e); }
+  $("#spotCount").textContent=words.length?(hits?`${hits}件 見つかりました`:"見つかりませんでした。別の言葉で試してください。"):"";
+  if(words.length&&!base.children.length) base.append(el("span",{className:"lead",textContent:"当てはまる宿・交通はありません。"}));
+  if(!shop.children.length&&words.length) shop.append(el("span",{className:"lead",textContent:"当てはまるお店はありません。"}));
+  else if(!shop.children.length){ const e=el("div",{className:"empty"}); e.append(el("b",{textContent:"お店はこれから追加します。"}),el("br"),"行きたい店が決まったら、営業時間・定休日・おすすめの頼み方つきでここに並びます。"); shop.append(e); }
 }
 
 /* ---------- 地図 ---------- */
