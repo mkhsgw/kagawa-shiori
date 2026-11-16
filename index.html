@@ -323,6 +323,15 @@ ul.plain li span{min-width:0;flex:1}
 .pola.big img{aspect-ratio:auto;max-height:66dvh;object-fit:contain;background:#14173d}
 .pola.big span{font-size:17px;white-space:normal}
 [hidden]{display:none!important}
+/* ---- お店のカテゴリ ---- */
+button.chip[aria-pressed="true"]{background:var(--dashi);color:var(--ai-deep);rotate:-2deg}
+.cat-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-top:8px}
+.cat-head small{font-family:var(--body);font-size:12.5px;font-weight:500;color:var(--muted)}
+.cat-tag{font-size:17px;padding:1px 14px;border:2.5px solid var(--edge);border-radius:999px;background:var(--card);rotate:-2deg}
+.cat-tag.c1{background:var(--dashi);color:var(--ai-deep)}
+.cat-tag.c2{background:var(--men);color:var(--ai-deep)}
+.cat-tag.c3{background:var(--shu);color:var(--ai-deep)}
+.catsel{width:auto}
 /* ---- お店カード: うどんの絵と特徴 ---- */
 .bowlpic{flex:none;width:62px;display:grid;justify-items:center;gap:1px;rotate:-5deg}
 .bowlpic svg{width:58px;height:58px;display:block;filter:drop-shadow(2px 2px 0 var(--edge))}
@@ -540,6 +549,7 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
 
   <section class="tab" id="tab-spots" hidden><button class="fab" id="fabSpot" type="button" aria-label="場所を追加">＋</button><div class="wrap">
     <h2>お店</h2>
+    <div class="chips" id="shopFilter"></div>
     <div class="spots" id="shopList"></div>
     <h2>宿・交通</h2>
     <div class="spots" id="baseList"></div>
@@ -684,6 +694,7 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
     <input id="spLink" inputmode="url" placeholder="GoogleマップのURL（ナビ用・なくてもOK）" autocomplete="off" aria-label="GoogleマップのURL">
     <div class="row"><label class="lead">開店 <input id="spOpen" type="time" style="width:auto"></label><label class="lead">閉店 <input id="spClose" type="time" style="width:auto"></label></div>
     <input id="spClosed" maxlength="20" placeholder="定休日（例: 日曜）" autocomplete="off" aria-label="定休日">
+    <select id="spCat" aria-label="カテゴリ"><option value="">カテゴリを選ぶ（なくてもOK）</option><option>出汁系</option><option>麺系</option><option>変わり種系</option></select>
     <input id="spFeat" maxlength="80" placeholder="お店の特徴（例: 釜玉発祥の店。庭で食べられる）" autocomplete="off" aria-label="お店の特徴">
     <input id="spOrder" maxlength="40" placeholder="おすすめの頼み方（例: ひやあつ小＋ちくわ天）" autocomplete="off" aria-label="おすすめの頼み方">
     <input id="spMemo" maxlength="60" placeholder="ひとことメモ" autocomplete="off" aria-label="メモ">
@@ -955,6 +966,9 @@ function bowlSvg(type){
 }
 function bowlPic(s){ const t=udonType(s), b=el("span",{className:"bowlpic"}); b.innerHTML=bowlSvg(t); b.append(el("small",{textContent:UDON_NAME[t]})); return b; }
 
+const CATS=["出汁系","麺系","変わり種系"];
+const CAT_NOTE={"出汁系":"だしを味わう店","麺系":"麺そのものが主役の店","変わり種系":"ここだけのメニューがある店","未分類":"カードを開くとカテゴリを選べます"};
+
 /* ---------- 定休日の判定: 旅行中の各日に、その店へ行けるか ---------- */
 function dayStatus(s,d){
   if(s.kind!=="shop") return "";
@@ -973,7 +987,7 @@ function closedChips(s,off){
 
 /* ---------- スポット ---------- */
 function renderSpots(){
-  const shop=$("#shopList"), base=$("#baseList"); shop.textContent=""; base.textContent="";
+  const shop=$("#shopList"), base=$("#baseList"), groups={}; shop.textContent=""; base.textContent="";
   const open=new Set(store.get("openSpots",[]));
   SPOTS.slice().sort((a,b)=>neverOpen(a)-neverOpen(b)).forEach(s=>{   // 行けない店は後ろへ
     const k=KIND[s.kind]; const d=distTo(s);
@@ -993,14 +1007,26 @@ function renderSpots(){
     const b=el("button",{className:"btn small ghost",type:"button",textContent:"地図で見る"}); b.addEventListener("click",ev=>{ showTab("map",ev); setTimeout(()=>focusSpot(s),650); }); if(s.lat!=null) row.append(b);
     const ph=PHOTOS.filter(x=>x.spot===s.id);
     if(ph.length){ const st=el("div",{className:"strip"}); ph.slice().reverse().forEach(x=>{ const b2=el("button",{type:"button"},photoImg(x,300)); b2.setAttribute("aria-label","写真を大きく表示"); b2.addEventListener("click",()=>openViewer(x)); st.append(b2); }); body.append(st); }
+    if(s.kind==="shop"){ const cs=el("select",{className:"catsel"}); cs.setAttribute("aria-label","カテゴリ");
+      ["",...CATS].forEach(c=>cs.append(el("option",{value:c,textContent:c||"未分類"}))); cs.value=CATS.includes(s.category)?s.category:"";
+      cs.addEventListener("change",()=>write({action:"updSpot",spot:s.id,category:cs.value},()=>{ s.category=cs.value; renderSpots(); }));
+      body.append(el("label",{className:"row lead"},"カテゴリ ",cs)); }
     if(s.kind==="shop") row.append(el("a",{className:"btn small ghost",href:"https://www.google.com/search?tbm=isch&q="+encodeURIComponent(s.name+" うどん"),target:"_blank",rel:"noopener",textContent:"実物の写真を見る ↗"}));
     if(s.by){ body.append(el("div",{className:"lead",textContent:s.by+" さんが追加"}));
       if(s.by===getMe()){ const x=el("button",{className:"x",type:"button",textContent:"この場所を消す"}); x.style.fontSize="12.5px";
         x.addEventListener("click",()=>{ if(!x.dataset.armed){ x.dataset.armed="1"; x.textContent="もう一度押すと消します"; return; }
           write({action:"delSpot",spot:s.id},()=>{}); }); row.append(x); } }
     body.append(row); det.append(body);
-    (s.kind==="shop"?shop:base).append(det);
+    if(s.kind==="shop"){ const c=CATS.includes(s.category)?s.category:"未分類"; (groups[c]=groups[c]||[]).push(det); } else base.append(det);
   });
+  // お店はカテゴリごとにまとめ、上の札で絞り込める
+  const fbox=$("#shopFilter"); fbox.textContent=""; const cur=store.get("shopCat","");
+  const names=[...CATS,"未分類"].filter(c=>groups[c]);
+  if(names.length>1) ["",...names].forEach(c=>{ const b=el("button",{type:"button",className:"chip",textContent:c?`${c} ${groups[c].length}`:"すべて"});
+    b.setAttribute("aria-pressed",String(c===(names.includes(cur)?cur:""))); b.addEventListener("click",()=>{ store.set("shopCat",c); renderSpots(); }); fbox.append(b); });
+  names.filter(c=>!names.includes(cur)||c===cur).forEach(c=>{
+    shop.append(el("h3",{className:"cat-head"},el("span",{className:"cat-tag c"+(CATS.indexOf(c)+1),textContent:c}),el("small",{textContent:CAT_NOTE[c]||""})));
+    groups[c].forEach(x=>shop.append(x)); });
   if(!shop.children.length){ const e=el("div",{className:"empty"}); e.append(el("b",{textContent:"お店はこれから追加します。"}),el("br"),"行きたい店が決まったら、営業時間・定休日・おすすめの頼み方つきでここに並びます。"); shop.append(e); }
 }
 
@@ -1084,7 +1110,7 @@ function toSpot(r){
   [["営業",r.hours],["定休",r.closed],["支払い",r.pay],["駐車場",r.parking]].forEach(([k,v])=>{ if(v) info[k]=v; });
   lines(r.info).forEach(l=>{ const m=l.match(/^(.+?)[:：]\s*(.+)$/); if(m) info[m[1].trim()]=m[2].trim(); else info["メモ"]=l; });
   const lat=num(r.lat), lng=num(r.lng);
-  return { id:r.id, kind:KMAP[r.kind]||"shop", name:r.name, lat:lng==null?null:lat, lng:lat==null?null:lng, gmap:r.gmap||r.name, info, order:r.order||"", tips:lines(r.memo), feature:r.feature||"",
+  return { id:r.id, kind:KMAP[r.kind]||"shop", name:r.name, lat:lng==null?null:lat, lng:lat==null?null:lng, gmap:r.gmap||r.name, info, order:r.order||"", tips:lines(r.memo), feature:r.feature||"", category:r.category||"",
     link:/^https:\/\//.test(r.link||"")?r.link:"", open:r.open||"", close:r.close||"", stay:parseInt(r.stay,10)||0, by:r.by||"",
     closedDays:/第|不定/.test(r.closed||"")?[]:(String(r.closed||"").match(/[月火水木金土日]/g)||[]) };
 }
@@ -1306,7 +1332,7 @@ $("#spotForm").addEventListener("submit",ev=>{ ev.preventDefault(); const hint=$
   if(!name){ hint.textContent="店名を入れてください。"; return; }
   if(SPOTS.some(x=>x.name===name)){ hint.textContent="同じ名前の場所がすでにあります。"; return; }
   if(link&&!/^https:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|(www\.)?google\.[a-z.]+\/maps|maps\.google\.)/.test(link)){ hint.textContent="GoogleマップのURLを貼ってください（共有ボタンでコピーしたもの）。"; return; }
-  write({action:"addSpot",name,link,open:$("#spOpen").value,close:$("#spClose").value,closed:$("#spClosed").value.trim(),order:$("#spOrder").value.trim(),memo:$("#spMemo").value.trim(),feature:$("#spFeat").value.trim(),by:getMe()},()=>{})
+  write({action:"addSpot",name,link,open:$("#spOpen").value,close:$("#spClose").value,closed:$("#spClosed").value.trim(),order:$("#spOrder").value.trim(),memo:$("#spMemo").value.trim(),feature:$("#spFeat").value.trim(),category:$("#spCat").value,by:getMe()},()=>{})
     .then(ok=>{ if(!ok){ hint.textContent="追加できませんでした。電波を確認してください。"; return; }
       $("#spotForm").reset(); $("#spotDlg").close();
       const s=SPOTS.find(x=>x.name===name); if(s){ const d=document.getElementById("spot-"+s.id); if(d){ d.open=true; d.scrollIntoView({block:"center"}); } } });
