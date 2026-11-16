@@ -323,6 +323,11 @@ ul.plain li span{min-width:0;flex:1}
 .pola.big img{aspect-ratio:auto;max-height:66dvh;object-fit:contain;background:#14173d}
 .pola.big span{font-size:17px;white-space:normal}
 [hidden]{display:none!important}
+/* ---- 地図のお店ピン: うどんの絵 ---- */
+.bpin{position:relative;width:46px;height:54px;filter:drop-shadow(2px 3px 0 rgba(20,23,61,.45))}
+.bpin svg{position:relative;z-index:1;width:46px;height:46px;display:block}
+.bpin::after{content:"";position:absolute;left:50%;bottom:0;translate:-50% 0;border:9px solid #0000;border-top:13px solid #14173d;border-bottom:0}
+.bpin.off{filter:grayscale(1);opacity:.6}
 /* ---- お店の実物の写真 ---- */
 .gphotos{display:grid;gap:4px;min-width:0}
 .gstrip{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px;scrollbar-width:none}
@@ -1078,7 +1083,11 @@ function drawMarkers(fit){
   SPOTS.forEach(s=>{
     if(s.lat==null) return;
     const k=KIND[s.kind];
-    const icon=L.divIcon({className:"",html:`<div class="pin${neverOpen(s)?" off":""}" style="background:${k.color}"></div>`,iconSize:[28,28],iconAnchor:[14,28],popupAnchor:[0,-26]});
+    let icon;
+    if(s.kind==="shop"){   // お店は、場所タブと同じうどんの絵をピンにする
+      const b=el("div",{className:"bpin"+(neverOpen(s)?" off":"")}); b.innerHTML=bowlSvg(udonType(s));
+      icon=L.divIcon({className:"",html:b,iconSize:[46,54],iconAnchor:[23,52],popupAnchor:[0,-48]});
+    } else icon=L.divIcon({className:"",html:`<div class="pin" style="background:${k.color}"></div>`,iconSize:[28,28],iconAnchor:[14,28],popupAnchor:[0,-26]});
     const pop=el("div"); pop.append(el("b",{textContent:s.name}),el("br"));
     const a=el("a",{href:"#",textContent:"詳細を見る"}); a.addEventListener("click",ev=>{ev.preventDefault(); showTab("spots",ev); const d=document.getElementById("spot-"+s.id); if(d){d.open=true; setTimeout(()=>d.scrollIntoView({block:"center"}),650);} });
     pop.append(a," ・ ",el("a",{href:gmapUrl(s),target:"_blank",rel:"noopener",textContent:"ナビ"}));
