@@ -43,12 +43,12 @@ a{color:inherit;text-decoration-color:var(--shu);text-decoration-thickness:2px;t
 .wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 
 /* ---- スクロール進捗: 画面上を伸びていく一本のうどん ---- */
-.noodle{position:fixed;inset:0 0 auto 0;height:9px;z-index:2000;pointer-events:none;transform-origin:0 50%;scale:0 1;
-  background:radial-gradient(circle at 50% 120%,#0000 5px,var(--ai-deep) 5px 6.5px,#0000 7px) 0 0/14px 9px,var(--dashi)}
+.noodle{position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);height:18px;z-index:2000;pointer-events:none;clip-path:inset(0 100% 0 0);
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='18'%3E%3Cpath d='M0 9Q12 2 24 9T48 9' fill='none' stroke='%2314173d' stroke-width='9'/%3E%3Cpath d='M0 9Q12 2 24 9T48 9' fill='none' stroke='%23f8e9b6' stroke-width='5.5'/%3E%3C/svg%3E") 0 50%/48px 18px repeat-x}
 @supports (animation-timeline:scroll()){
-  .noodle{animation:grow linear both;animation-timeline:scroll(root)}
+  .noodle{animation:noodle linear both;animation-timeline:scroll(root)}
 }
-@keyframes grow{to{scale:1 1}}
+@keyframes noodle{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
 
 /* ---- ヒーロー: 青海波 ---- */
 .hero{position:relative;color:var(--men);background-color:var(--ai);overflow:hidden;padding-top:env(safe-area-inset-top,0px);
@@ -323,6 +323,14 @@ ul.plain li span{min-width:0;flex:1}
 .pola.big img{aspect-ratio:auto;max-height:66dvh;object-fit:contain;background:#14173d}
 .pola.big span{font-size:17px;white-space:normal}
 [hidden]{display:none!important}
+/* ---- お店カード: うどんの絵と特徴 ---- */
+.bowlpic{flex:none;width:62px;display:grid;justify-items:center;gap:1px;rotate:-5deg}
+.bowlpic svg{width:58px;height:58px;display:block;filter:drop-shadow(2px 2px 0 var(--edge))}
+.bowlpic small{font-family:var(--display);font-size:10px;line-height:1.2;white-space:nowrap}
+details.spot:nth-child(even) .bowlpic{rotate:5deg}
+.feat{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:12.5px;font-weight:500;line-height:1.5;color:var(--muted);margin-top:2px}
+details.spot[open] .feat{display:block;color:var(--ink);font-size:13.5px}
+.chips-line{display:block}
 /* ---- 定休日: 行けない店はグレーに ---- */
 .cl{display:inline-block;font-size:11px;font-weight:900;line-height:1.5;border:1.5px solid var(--shu);color:var(--shu);border-radius:999px;padding:0 7px;margin:3px 4px 0 0}
 .cl.never{background:var(--ink);border-color:var(--ink);color:var(--bg)}
@@ -676,6 +684,7 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
     <input id="spLink" inputmode="url" placeholder="GoogleマップのURL（ナビ用・なくてもOK）" autocomplete="off" aria-label="GoogleマップのURL">
     <div class="row"><label class="lead">開店 <input id="spOpen" type="time" style="width:auto"></label><label class="lead">閉店 <input id="spClose" type="time" style="width:auto"></label></div>
     <input id="spClosed" maxlength="20" placeholder="定休日（例: 日曜）" autocomplete="off" aria-label="定休日">
+    <input id="spFeat" maxlength="80" placeholder="お店の特徴（例: 釜玉発祥の店。庭で食べられる）" autocomplete="off" aria-label="お店の特徴">
     <input id="spOrder" maxlength="40" placeholder="おすすめの頼み方（例: ひやあつ小＋ちくわ天）" autocomplete="off" aria-label="おすすめの頼み方">
     <input id="spMemo" maxlength="60" placeholder="ひとことメモ" autocomplete="off" aria-label="メモ">
     <button class="btn" type="submit">お店リストに追加</button>
@@ -926,6 +935,26 @@ function km(a,b){ const R=6371,r=x=>x*Math.PI/180; const dLa=r(b.lat-a.lat),dLo=
 const distTo = s => me&&s.lat!=null ? km(me,s) : null;
 const fmtKm = d => d<1? Math.round(d*1000/10)*10+"m" : d.toFixed(d<10?1:0)+"km";
 
+/* ---------- うどんの絵: おすすめの頼み方から種類を選んで描く（写真ではなくイラスト） ---------- */
+function udonType(s){ const t=(s.order||"")+" "+(s.feature||"");
+  return /かまたま|釜玉/.test(t)?"kamatama":/しょうゆ|醤油/.test(t)?"shoyu":/あげ|きつね/.test(t)?"kitsune":/餅/.test(t)?"mochi":/肉/.test(t)?"niku":/天|エメラルド/.test(t)?"ten":/ぶっかけ/.test(t)?"bukkake":"kake"; }
+const UDON_NAME={kamatama:"釜玉",shoyu:"しょうゆ",kitsune:"きつね",mochi:"もち入り",niku:"肉うどん",ten:"天ぷらのせ",bukkake:"ぶっかけ",kake:"かけ"};
+function bowlSvg(type){
+  const broth={kamatama:"#f6edd3",shoyu:"#f3e6c6",bukkake:"#b9803f"}[type]||"#e9b84c";
+  const noodles="M25 45q12-13 25-2t25-4M23 56q14-10 27 0t27-3M29 67q11-8 21-1t21-3M33 34q10-8 17 0t15 0";
+  const negi='<g fill="#5fa53a" stroke="#2f6b1c" stroke-width=".8"><circle cx="66" cy="38" r="3.2"/><circle cx="72" cy="46" r="2.6"/><circle cx="60" cy="31" r="2.6"/></g>';
+  const top={
+    kamatama:'<circle cx="50" cy="51" r="15" fill="#fffdf4" opacity=".92"/><circle cx="50" cy="51" r="9.5" fill="#ffb300" stroke="#e08a00" stroke-width="1.2"/>',
+    shoyu:'<path d="M30 40q20 6 40-4M28 58q22-8 44 2" fill="none" stroke="#5a3414" stroke-width="2.2" stroke-linecap="round"/><path d="M30 68a9 9 0 0 1 16-6z" fill="#7cb342" stroke="#3f6b1c" stroke-width="1"/>',
+    kitsune:'<rect x="30" y="38" width="38" height="26" rx="4" fill="#cf8f2e" stroke="#8a5a14" stroke-width="2" transform="rotate(-12 50 52)"/><path d="M36 48l26-5M38 56l26-5" stroke="#8a5a14" stroke-width="1.4"/>',
+    mochi:'<circle cx="48" cy="53" r="14" fill="#fffdf7" stroke="#d8cfc0" stroke-width="1.5"/><circle cx="48" cy="53" r="5" fill="#7a3b4a" opacity=".55"/>',
+    niku:'<g fill="#8a4b2a" stroke="#5a2e14" stroke-width="1"><path d="M34 44q8-6 14 0t10 4q-6 6-14 3t-10-7z"/><path d="M46 58q8-5 16 0q-4 7-12 5z"/><path d="M56 40q7-4 12 2q-5 5-11 2z"/></g>',
+    ten:'<path d="M30 56q4-16 22-18t20 8q-2 14-20 16t-22-6z" fill="#edb84f" stroke="#b97f1a" stroke-width="1.6"/><path d="M38 52q6-6 12-2M50 56q6-6 12-3" fill="none" stroke="#b97f1a" stroke-width="1.2"/>',
+  }[type]||"";
+  return `<svg viewBox="0 0 100 100" role="img" aria-label="${UDON_NAME[type]}うどんの絵"><circle cx="50" cy="50" r="48" fill="#14173d"/><circle cx="50" cy="50" r="43" fill="#fff"/><circle cx="50" cy="50" r="37" fill="${broth}"/><path d="${noodles}" fill="none" stroke="#c9a544" stroke-width="7.5" stroke-linecap="round"/><path d="${noodles}" fill="none" stroke="#f8e9b6" stroke-width="5" stroke-linecap="round"/>${top}${type==="mochi"||type==="shoyu"?"":negi}</svg>`;
+}
+function bowlPic(s){ const t=udonType(s), b=el("span",{className:"bowlpic"}); b.innerHTML=bowlSvg(t); b.append(el("small",{textContent:UDON_NAME[t]})); return b; }
+
 /* ---------- 定休日の判定: 旅行中の各日に、その店へ行けるか ---------- */
 function dayStatus(s,d){
   if(s.kind!=="shop") return "";
@@ -951,7 +980,10 @@ function renderSpots(){
     const off=neverOpen(s), det=el("details",{className:"spot"+(off?" off":""),id:"spot-"+s.id}); det.open=open.has(s.id);
     det.addEventListener("toggle",()=>{ const o=new Set(store.get("openSpots",[])); det.open?o.add(s.id):o.delete(s.id); store.set("openSpots",[...o]); });
     const tag=el("span",{className:"kind",textContent:k.label}); tag.style.background=k.color;
-    det.append(el("summary",{},tag,el("span",{className:"spot-name"},s.name,...closedChips(s,off)),el("span",{className:"dist",textContent:d!=null?fmtKm(d):""})));
+    const nm=el("span",{className:"spot-name"},s.name);
+    if(s.feature) nm.append(el("span",{className:"feat",textContent:s.feature}));
+    const chips=closedChips(s,off).filter(c=>c.tagName!=="BR"); if(chips.length) nm.append(el("span",{className:"chips-line"},...chips));
+    det.append(el("summary",{},s.kind==="shop"?bowlPic(s):tag,nm,el("span",{className:"dist",textContent:d!=null?fmtKm(d):""})));
     const body=el("div",{className:"spot-body"});
     if(s.order) body.append(el("div",{className:"order",textContent:"おすすめの頼み方: "+s.order}));
     const dl=el("dl"); Object.entries(s.info||{}).forEach(([a,b])=>dl.append(el("dt",{textContent:a}),el("dd",{textContent:b}))); body.append(dl);
@@ -961,6 +993,7 @@ function renderSpots(){
     const b=el("button",{className:"btn small ghost",type:"button",textContent:"地図で見る"}); b.addEventListener("click",ev=>{ showTab("map",ev); setTimeout(()=>focusSpot(s),650); }); if(s.lat!=null) row.append(b);
     const ph=PHOTOS.filter(x=>x.spot===s.id);
     if(ph.length){ const st=el("div",{className:"strip"}); ph.slice().reverse().forEach(x=>{ const b2=el("button",{type:"button"},photoImg(x,300)); b2.setAttribute("aria-label","写真を大きく表示"); b2.addEventListener("click",()=>openViewer(x)); st.append(b2); }); body.append(st); }
+    if(s.kind==="shop") row.append(el("a",{className:"btn small ghost",href:"https://www.google.com/search?tbm=isch&q="+encodeURIComponent(s.name+" うどん"),target:"_blank",rel:"noopener",textContent:"実物の写真を見る ↗"}));
     if(s.by){ body.append(el("div",{className:"lead",textContent:s.by+" さんが追加"}));
       if(s.by===getMe()){ const x=el("button",{className:"x",type:"button",textContent:"この場所を消す"}); x.style.fontSize="12.5px";
         x.addEventListener("click",()=>{ if(!x.dataset.armed){ x.dataset.armed="1"; x.textContent="もう一度押すと消します"; return; }
@@ -1051,7 +1084,7 @@ function toSpot(r){
   [["営業",r.hours],["定休",r.closed],["支払い",r.pay],["駐車場",r.parking]].forEach(([k,v])=>{ if(v) info[k]=v; });
   lines(r.info).forEach(l=>{ const m=l.match(/^(.+?)[:：]\s*(.+)$/); if(m) info[m[1].trim()]=m[2].trim(); else info["メモ"]=l; });
   const lat=num(r.lat), lng=num(r.lng);
-  return { id:r.id, kind:KMAP[r.kind]||"shop", name:r.name, lat:lng==null?null:lat, lng:lat==null?null:lng, gmap:r.gmap||r.name, info, order:r.order||"", tips:lines(r.memo),
+  return { id:r.id, kind:KMAP[r.kind]||"shop", name:r.name, lat:lng==null?null:lat, lng:lat==null?null:lng, gmap:r.gmap||r.name, info, order:r.order||"", tips:lines(r.memo), feature:r.feature||"",
     link:/^https:\/\//.test(r.link||"")?r.link:"", open:r.open||"", close:r.close||"", stay:parseInt(r.stay,10)||0, by:r.by||"",
     closedDays:/第|不定/.test(r.closed||"")?[]:(String(r.closed||"").match(/[月火水木金土日]/g)||[]) };
 }
@@ -1273,7 +1306,7 @@ $("#spotForm").addEventListener("submit",ev=>{ ev.preventDefault(); const hint=$
   if(!name){ hint.textContent="店名を入れてください。"; return; }
   if(SPOTS.some(x=>x.name===name)){ hint.textContent="同じ名前の場所がすでにあります。"; return; }
   if(link&&!/^https:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|(www\.)?google\.[a-z.]+\/maps|maps\.google\.)/.test(link)){ hint.textContent="GoogleマップのURLを貼ってください（共有ボタンでコピーしたもの）。"; return; }
-  write({action:"addSpot",name,link,open:$("#spOpen").value,close:$("#spClose").value,closed:$("#spClosed").value.trim(),order:$("#spOrder").value.trim(),memo:$("#spMemo").value.trim(),by:getMe()},()=>{})
+  write({action:"addSpot",name,link,open:$("#spOpen").value,close:$("#spClose").value,closed:$("#spClosed").value.trim(),order:$("#spOrder").value.trim(),memo:$("#spMemo").value.trim(),feature:$("#spFeat").value.trim(),by:getMe()},()=>{})
     .then(ok=>{ if(!ok){ hint.textContent="追加できませんでした。電波を確認してください。"; return; }
       $("#spotForm").reset(); $("#spotDlg").close();
       const s=SPOTS.find(x=>x.name===name); if(s){ const d=document.getElementById("spot-"+s.id); if(d){ d.open=true; d.scrollIntoView({block:"center"}); } } });
