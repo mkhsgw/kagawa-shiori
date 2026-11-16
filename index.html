@@ -1,0 +1,985 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>香川旅のしおり</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=DotGothic16&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/* 方針: 藍の青海波ポスター × だし色 × 朱。太い縁と段差の影。
+   使っているCSS: light-dark / oklch / color-mix / @property / scroll-driven animations /
+   view transitions / anchor positioning / :has() と counter / mask / ::details-content / text-box */
+@property --n   { syntax:"<integer>"; inherits:true; initial-value:0 }
+@property --fill{ syntax:"<number>";  inherits:true; initial-value:0 }
+
+:root{
+  color-scheme:light dark;
+  --ai:oklch(.34 .15 268); --ai-2:oklch(.41 .16 266); --ai-deep:oklch(.22 .09 268);
+  --dashi:oklch(.89 .17 95); --shu:oklch(.66 .21 33); --olive:oklch(.68 .15 128); --men:oklch(.97 .025 92);
+  --bg:light-dark(var(--men),var(--ai-deep));
+  --ink:light-dark(var(--ai-deep),var(--men));
+  --card:light-dark(#fff,oklch(.29 .1 268));
+  --edge:light-dark(var(--ai-deep),var(--men));
+  --muted:color-mix(in oklch,var(--ink) 62%,var(--bg));
+  --line:color-mix(in oklch,var(--ink) 18%,var(--bg));
+  --shadow:5px 5px 0 var(--edge);
+  --display:"Dela Gothic One","Hiragino Kaku Gothic StdN","Yu Gothic",sans-serif;
+  --body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
+  --dot:"DotGothic16","MS Gothic",monospace;
+  --vx:50%;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-weight:500;font-size:15px;line-height:1.7;
+  overflow-x:clip;padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+h1,h2,h3{font-family:var(--display);font-weight:400;line-height:1.25;margin:0;text-wrap:balance;word-break:auto-phrase;font-feature-settings:"palt"}
+p{text-wrap:pretty}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--shu);outline-offset:3px}
+a{color:inherit;text-decoration-color:var(--shu);text-decoration-thickness:2px;text-underline-offset:3px}
+.wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* ---- スクロール進捗: 画面上を伸びていく一本のうどん ---- */
+.noodle{position:fixed;inset:0 0 auto 0;height:9px;z-index:2000;pointer-events:none;transform-origin:0 50%;scale:0 1;
+  background:radial-gradient(circle at 50% 120%,#0000 5px,var(--ai-deep) 5px 6.5px,#0000 7px) 0 0/14px 9px,var(--dashi)}
+@supports (animation-timeline:scroll()){
+  .noodle{animation:grow linear both;animation-timeline:scroll(root)}
+}
+@keyframes grow{to{scale:1 1}}
+
+/* ---- ヒーロー: 青海波 ---- */
+.hero{position:relative;color:var(--men);background-color:var(--ai);overflow:clip;padding-top:env(safe-area-inset-top,0px);
+  --w:radial-gradient(circle at 50% 100%,var(--ai) 0 20%,var(--ai-2) 20% 26%,var(--ai) 26% 42%,var(--ai-2) 42% 48%,var(--ai) 48% 64%,var(--ai-2) 64% 71%,#0000 71%);
+  background-image:var(--w),var(--w);background-size:56px 28px;background-position:0 0,28px 14px}
+.hero .wrap{position:relative;padding-block:26px 30px}
+.eyebrow{font-family:var(--dot);font-size:13px;letter-spacing:.12em;margin:0}
+.hero h1{margin-top:14px;display:grid;gap:10px;rotate:-3deg;transform-origin:0 100%}
+.hero h1 .big{font-size:clamp(104px,36vw,230px);line-height:1;color:var(--dashi);text-shadow:6px 6px 0 var(--shu),12px 12px 0 var(--ai-deep);letter-spacing:-.04em}
+.hero h1 .sub{font-size:clamp(30px,10vw,60px);color:#0000;-webkit-text-stroke:1.5px var(--men);letter-spacing:.06em}
+@supports (text-box:trim-both cap alphabetic){ .hero h1 .big{text-box:trim-both cap alphabetic} }
+@supports (animation-timeline:scroll()){ @media (prefers-reduced-motion:no-preference){
+  .hero h1{animation:heroOut linear both;animation-timeline:scroll(root);animation-range:0 420px}
+}}
+@keyframes heroOut{to{translate:-30px 40px;rotate:-9deg;scale:1.12}}
+
+/* 12角のシール: 正方形3枚を30度ずつ回す */
+.sticker{position:absolute;top:calc(18px + env(safe-area-inset-top,0px));right:max(14px,env(safe-area-inset-right,0px));width:112px;aspect-ratio:1;display:grid;place-items:center;rotate:10deg;color:var(--ai-deep);text-align:center;z-index:2}
+.burst,.burst::before,.burst::after{position:absolute;inset:11%;background:var(--shu);content:""}
+.burst::before,.burst::after{inset:0}
+.burst::before{rotate:30deg}.burst::after{rotate:60deg}
+@media (prefers-reduced-motion:no-preference){.burst{animation:spin 24s linear infinite}}
+@keyframes spin{to{rotate:360deg}}
+.sticker-txt{position:relative;display:grid;line-height:1;color:var(--men)}
+.sticker-txt b{font-family:var(--display);font-weight:400;font-size:40px;color:var(--dashi)}
+.sticker-txt small{font-weight:900;font-size:11px;margin-top:4px}
+
+.now{margin-top:26px;display:grid;gap:10px}
+.now-row{display:flex;gap:12px;align-items:center;background:var(--men);color:var(--ai-deep);border:2.5px solid var(--ai-deep);box-shadow:5px 5px 0 var(--ai-deep);border-radius:12px;padding:10px 12px}
+.now-row:nth-child(even){rotate:.8deg}.now-row:nth-child(odd){rotate:-.6deg}
+.now-tag{flex:none;font-family:var(--display);font-size:13px;background:var(--dashi);border:2px solid var(--ai-deep);border-radius:999px;padding:2px 10px}
+.now-body{min-width:0;font-weight:900;line-height:1.4}
+.now-sub{display:block;font-size:12.5px;font-weight:500;opacity:.75}
+
+/* 流れる帯 */
+.ticker{background:var(--shu);color:var(--ai-deep);border-block:3px solid var(--ai-deep);rotate:-2deg;width:110%;margin:-14px -5% 0;overflow:clip;position:relative;z-index:3;font-family:var(--display);font-size:15px;white-space:nowrap}
+.ticker div{display:inline-flex;gap:0;padding-block:5px}
+.ticker span{padding-right:1.2em}
+@media (prefers-reduced-motion:no-preference){.ticker div{animation:marquee 22s linear infinite}}
+@keyframes marquee{to{translate:-50% 0}}
+
+/* ---- タブ: 浮いたピル。選択中の印は anchor positioning で滑る ---- */
+nav{position:fixed;z-index:1500;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));bottom:calc(10px + env(safe-area-inset-bottom,0px));view-transition-name:nav}
+.bar{position:relative;max-width:520px;margin:0 auto;display:grid;grid-template-columns:repeat(6,1fr);padding:5px;border-radius:999px;border:2.5px solid var(--edge);box-shadow:var(--shadow);
+  background:color-mix(in oklch,var(--card) 82%,#0000);-webkit-backdrop-filter:blur(12px) saturate(1.6);backdrop-filter:blur(12px) saturate(1.6)}
+.bar button{position:relative;z-index:1;border:0;background:none;border-radius:999px;padding:9px 0;font-family:var(--display);font-size:12.5px;white-space:nowrap;transition:color .2s}
+.bar button[aria-selected="true"]{background:var(--dashi);color:var(--ai-deep)}
+.ind{display:none}
+@supports (anchor-name:--a){
+  .bar button[aria-selected="true"]{anchor-name:--tab;background:none}
+  .ind{display:block;position:absolute;position-anchor:--tab;top:anchor(top);bottom:anchor(bottom);left:anchor(left);right:anchor(right);background:var(--dashi);border:2px solid var(--ai-deep);border-radius:999px;transition:left .38s cubic-bezier(.3,1.5,.5,1),right .38s cubic-bezier(.3,1.5,.5,1)}
+}
+
+/* タブ切り替え: 押した場所から円で開く */
+@media (prefers-reduced-motion:no-preference){
+  ::view-transition-old(root){animation:none}
+  ::view-transition-new(root){animation:reveal .55s cubic-bezier(.7,0,.2,1) both}
+}
+@keyframes reveal{from{clip-path:circle(0 at var(--vx) 100%)}to{clip-path:circle(160% at var(--vx) 100%)}}
+
+section.tab>.wrap{display:grid;gap:20px;padding-block:28px 8px}
+h2{font-size:26px;justify-self:start;rotate:-1.2deg;padding:0 8px;margin-top:8px;
+  background:linear-gradient(#0000 55%,var(--dashi) 55% 92%,#0000 92%);color:var(--ink)}
+@media (prefers-color-scheme:dark){h2{background:linear-gradient(#0000 55%,color-mix(in oklch,var(--shu) 75%,#0000) 55% 92%,#0000 92%)}}
+h3{font-size:17px}
+.lead{color:var(--muted);font-size:13.5px;margin:0}
+.card{background:var(--card);border:2.5px solid var(--edge);box-shadow:var(--shadow);border-radius:16px;padding:16px;display:grid;gap:12px}
+
+/* ---- 行程 ---- */
+.day{position:relative;display:grid;gap:14px;padding-top:6px}
+.day-num{position:absolute;right:-14px;top:-10px;z-index:0;pointer-events:none;font-family:var(--display);font-size:clamp(150px,52vw,260px);line-height:.9;color:#0000;-webkit-text-stroke:2px color-mix(in oklch,var(--ink) 22%,#0000)}
+@supports (animation-timeline:view()){ @media (prefers-reduced-motion:no-preference){
+  .day-num{animation:drift linear both;animation-timeline:view()}
+}}
+@keyframes drift{from{translate:0 90px;rotate:6deg}to{translate:0 -90px;rotate:-6deg}}
+.day-head{position:sticky;top:calc(16px + env(safe-area-inset-top,0px));z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-self:start;max-width:100%;
+  background:var(--dashi);color:var(--ai-deep);border:2.5px solid var(--ai-deep);box-shadow:4px 4px 0 var(--ai-deep);border-radius:999px;padding:4px 16px 4px 6px;rotate:-1deg}
+.day-head .date{font-family:var(--display);font-size:18px;background:var(--ai-deep);color:var(--dashi);border-radius:999px;padding:2px 12px}
+.day-head h3{font-size:14px}
+.wx{position:relative;z-index:1;font-family:var(--dot);font-size:13px;font-variant-numeric:tabular-nums;margin-top:-6px;padding-left:6px}
+.wx:empty{display:none}
+.tl{position:relative;z-index:1;list-style:none;margin:0;padding:0 0 0 30px;display:grid;gap:14px}
+/* 縦のうどん。スクロールに合わせて上からすすられていく */
+.tl::before{content:"";position:absolute;left:3px;top:4px;bottom:4px;width:14px;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='28'%3E%3Cpath d='M7 0Q14 7 7 14Q0 21 7 28' fill='none' stroke='%23e9b824' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E") repeat-y}
+@supports (animation-timeline:view()){ @media (prefers-reduced-motion:no-preference){
+  .tl::before{animation:slurp linear both;animation-timeline:view();animation-range:cover 5% cover 65%}
+  .tl li{animation:rise linear both;animation-timeline:view();animation-range:entry 0% entry 70%}
+}}
+@keyframes slurp{from{clip-path:inset(0 0 100% 0)}to{clip-path:inset(0)}}
+@keyframes rise{from{opacity:0;translate:36px 0;rotate:2.5deg}}
+.tl li{position:relative}
+.tl li::before{content:"";position:absolute;left:-29px;top:5px;width:18px;height:18px;border-radius:50%;background:var(--card);border:4px solid var(--edge)}
+.tl li.current::before{background:var(--shu)}
+@media (prefers-reduced-motion:no-preference){.tl li.current::before{animation:pulse 1.4s ease-in-out infinite}}
+@keyframes pulse{50%{box-shadow:0 0 0 9px color-mix(in oklch,var(--shu) 30%,#0000)}}
+.tl time{font-family:var(--display);font-size:19px;font-variant-numeric:tabular-nums;margin-right:8px}
+.tl .what{font-weight:900;font-size:16px}
+.tl .memo{color:var(--muted);font-size:13px;display:block}
+.tl a.memo{color:var(--ink);font-weight:700;display:inline-block}
+.tl li.open{border:2.5px dashed var(--edge);border-radius:12px;padding:8px 12px;
+  background:repeating-linear-gradient(-45deg,#0000 0 10px,color-mix(in oklch,var(--dashi) 34%,#0000) 10px 20px)}
+.tl li.open::before{border-style:dashed;top:13px;left:-31.5px}
+
+/* 搭乗券: mask でミシン目の切り欠き */
+.ticket{--cut:92px;display:grid;grid-template-columns:1fr var(--cut);background:var(--men);color:var(--ai-deep);border-radius:14px;rotate:-1.5deg;
+  -webkit-mask:radial-gradient(circle 10px at calc(100% - var(--cut)) 0,#0000 97%,#000),radial-gradient(circle 10px at calc(100% - var(--cut)) 100%,#0000 97%,#000);
+  mask:radial-gradient(circle 10px at calc(100% - var(--cut)) 0,#0000 97%,#000),radial-gradient(circle 10px at calc(100% - var(--cut)) 100%,#0000 97%,#000);
+  -webkit-mask-composite:source-in;mask-composite:intersect}
+.ticket-wrap{filter:drop-shadow(5px 5px 0 var(--shu))}
+.t-main{padding:12px 14px;display:grid;gap:2px;min-width:0;border-top:10px solid var(--ai)}
+.t-label{font-family:var(--dot);font-size:11px;letter-spacing:.16em;color:var(--ai)}
+.t-route{font-family:var(--display);font-size:26px;display:flex;gap:10px;align-items:center;line-height:1.2}
+.t-route i{flex:1;height:0;border-top:3px dotted var(--ai-deep);position:relative;min-width:20px}
+.t-route i::after{content:"✈";position:absolute;right:-2px;top:-.72em;font-style:normal;font-size:18px;background:var(--men);padding-left:4px}
+.t-times{font-family:var(--dot);font-size:15px;font-variant-numeric:tabular-nums}
+.t-stub{border-left:3px dashed var(--ai-deep);border-top:10px solid var(--shu);padding:10px;display:grid;gap:6px;align-content:center;justify-items:center;font-family:var(--display);font-size:15px}
+.barcode{width:100%;height:30px;background:repeating-linear-gradient(90deg,var(--ai-deep) 0 2px,#0000 2px 4px,var(--ai-deep) 4px 7px,#0000 7px 9px,var(--ai-deep) 9px 10px,#0000 10px 14px)}
+
+.note{background:var(--shu);color:var(--ai-deep);border:2.5px solid var(--edge);box-shadow:var(--shadow);border-radius:12px;padding:10px 14px;font-size:14px;font-weight:700;rotate:.6deg}
+.note b{font-family:var(--display);font-weight:400;background:var(--ai-deep);color:var(--dashi);padding:1px 8px;border-radius:6px;margin-right:6px}
+
+/* ---- 地図 ---- */
+#map{height:56vh;min-height:320px;border-radius:18px;border:2.5px solid var(--edge);box-shadow:var(--shadow);z-index:0;background:var(--line)}
+.leaflet-tile-pane{filter:saturate(1.35) contrast(1.05)}
+@media (prefers-color-scheme:dark){.leaflet-tile-pane{filter:invert(1) hue-rotate(205deg) saturate(.8) brightness(.95)}}
+.btn{display:inline-block;background:var(--dashi);color:var(--ai-deep);border:2.5px solid var(--edge);box-shadow:3px 3px 0 var(--edge);border-radius:999px;padding:9px 18px;font-family:var(--display);font-size:14px;text-decoration:none;transition:translate .1s,box-shadow .1s}
+.btn:active{translate:3px 3px;box-shadow:0 0 0 var(--edge)}
+.btn.ghost{background:var(--card);color:var(--ink)}
+.btn.small{padding:6px 13px;font-size:12.5px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#gpsMsg{font-size:13px;color:var(--muted);min-width:0;flex:1 1 12em}
+.pin{width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #14173d;box-shadow:2px 2px 0 #14173d}
+.me{width:20px;height:20px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 2px #1a73e8}
+@media (prefers-reduced-motion:no-preference){.me{animation:ping 1.6s ease-out infinite}}
+@keyframes ping{from{box-shadow:0 0 0 2px #1a73e8,0 0 0 2px rgba(26,115,232,.5)}to{box-shadow:0 0 0 2px #1a73e8,0 0 0 22px rgba(26,115,232,0)}}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;font-weight:700}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:5px;border:2px solid var(--edge);vertical-align:-1px}
+
+/* ---- スポット ---- */
+.spots{display:grid;gap:14px}
+details.spot{background:var(--card);border:2.5px solid var(--edge);box-shadow:var(--shadow);border-radius:16px;transition:rotate .25s;interpolate-size:allow-keywords}
+details.spot:nth-child(odd){rotate:-.7deg}details.spot:nth-child(even){rotate:.6deg}
+details.spot[open]{rotate:0deg}
+details.spot summary{list-style:none;padding:13px 14px;display:flex;gap:10px;align-items:center;cursor:pointer}
+details.spot summary::-webkit-details-marker{display:none}
+details.spot summary::after{content:"＋";font-family:var(--display);flex:none;transition:rotate .25s}
+details.spot[open] summary::after{rotate:135deg}
+@supports selector(::details-content){ @media (prefers-reduced-motion:no-preference){
+  details.spot::details-content{block-size:0;overflow:clip;transition:block-size .35s cubic-bezier(.3,1.2,.5,1),content-visibility .35s allow-discrete}
+  details.spot[open]::details-content{block-size:auto}
+}}
+.kind{flex:none;font-family:var(--display);font-size:11.5px;padding:2px 9px;border-radius:999px;color:#fff;border:2px solid var(--edge);rotate:-4deg}
+.spot-name{font-weight:900;min-width:0;flex:1;line-height:1.4}
+.dist{flex:none;font-family:var(--dot);font-size:13px;font-variant-numeric:tabular-nums}
+.spot-body{padding:0 14px 16px;display:grid;gap:12px;font-size:14px}
+.spot-body dl{margin:0;display:grid;grid-template-columns:5.8em 1fr;gap:5px 10px}
+.spot-body dt{font-weight:900;font-size:12.5px;color:var(--muted)}
+.spot-body dd{margin:0;min-width:0}
+.order{background:var(--dashi);color:var(--ai-deep);border:2px solid var(--edge);border-radius:10px;padding:8px 12px;font-weight:900}
+.tips{margin:0;padding-left:1.2em}
+.tips li::marker{color:var(--shu);content:"◆ "}
+.empty{border:2.5px dashed var(--edge);border-radius:16px;padding:18px 16px;font-size:14px;
+  background:repeating-linear-gradient(-45deg,#0000 0 10px,color-mix(in oklch,var(--dashi) 34%,#0000) 10px 20px)}
+.empty b{font-family:var(--display);font-weight:400}
+
+/* ---- うどん: 断面どんぶり ---- */
+.udon{grid-template-columns:auto 1fr;align-items:center;gap:8px 18px}
+.bowl{position:relative;width:132px;height:112px;margin-top:6px}
+.bowl .cup{position:absolute;inset:34px 0 10px;border:3.5px solid var(--edge);border-top-width:6px;border-radius:6px 6px 66px 66px / 6px 6px 62px 62px;overflow:clip;background:color-mix(in oklch,var(--dashi) 22%,var(--card))}
+.bowl .cup::before{content:"";position:absolute;inset:auto 0 0;height:calc(var(--fill)*1%);transition:--fill .7s cubic-bezier(.3,1.4,.5,1);
+  background:radial-gradient(circle at 50% -20%,#0000 7px,var(--ai-deep) 7px 8.5px,#0000 9px) 0 0/18px 11px,radial-gradient(circle at 50% -20%,#0000 7px,var(--ai-deep) 7px 8.5px,#0000 9px) 9px 5.5px/18px 11px,oklch(.95 .06 92)}
+.bowl .foot{position:absolute;left:36%;right:36%;bottom:0;height:12px;background:var(--edge);border-radius:0 0 6px 6px}
+.steam{position:absolute;top:0;width:10px;height:30px;border-radius:999px;background:color-mix(in oklch,var(--ink) 30%,#0000);filter:blur(4px);opacity:0}
+.steam:nth-child(1){left:32%}.steam:nth-child(2){left:48%;animation-delay:.6s}.steam:nth-child(3){left:64%;animation-delay:1.2s}
+@media (prefers-reduced-motion:no-preference){.bowl.hot .steam{animation:steam 2.4s ease-in-out infinite}}
+@keyframes steam{0%{opacity:0;translate:0 14px;scale:1 .6}40%{opacity:.9}100%{opacity:0;translate:6px -14px;scale:1.6 1.3}}
+.count{font-family:var(--display);font-size:64px;line-height:1;color:var(--shu);font-variant-numeric:tabular-nums;transition:--n .7s;counter-reset:n var(--n)}
+.count::before{content:counter(n)}
+.count small{font-size:20px;color:var(--ink);margin-left:4px}
+.rank{font-family:var(--display);font-size:15px}
+.pm{display:flex;gap:10px;align-items:center;grid-column:1/-1}
+.round{width:48px;height:48px;border-radius:50%;border:2.5px solid var(--edge);box-shadow:3px 3px 0 var(--edge);background:var(--card);font-family:var(--display);font-size:22px;line-height:1;transition:translate .1s,box-shadow .1s}
+.round.fill{background:var(--shu);color:var(--ai-deep);flex:1;border-radius:999px;font-size:16px}
+.round:active{translate:3px 3px;box-shadow:0 0 0 var(--edge)}
+.steps{margin:0;padding:0;list-style:none;display:grid;gap:10px;counter-reset:s}
+.steps li{counter-increment:s;display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start}
+.steps li::before{content:counter(s);font-family:var(--display);width:30px;height:30px;display:grid;place-items:center;background:var(--dashi);color:var(--ai-deep);border:2px solid var(--edge);border-radius:50%;rotate:-6deg}
+.steps li:nth-child(even)::before{rotate:6deg;background:var(--shu)}
+.gloss{display:grid;grid-template-columns:auto 1fr;gap:0 12px;margin:0;font-size:14px}
+.gloss>div{display:grid;grid-template-columns:subgrid;grid-column:1/-1;padding:8px 0;border-bottom:2px dotted var(--line)}
+.gloss>div:last-child{border:0}
+.gloss dt{font-family:var(--display);white-space:nowrap}
+.gloss dd{margin:0;min-width:0}
+
+/* ---- お金: ギザギザのレシート ---- */
+.receipt-wrap{filter:drop-shadow(5px 5px 0 var(--edge));rotate:-1deg}
+.receipt{background:#fff;color:#14173d;font-family:var(--dot);padding:18px 16px 30px;display:grid;gap:8px;font-size:14.5px;
+  -webkit-mask:conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg) 50%/16px 100%;
+  mask:conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg) 50%/16px 100%}
+.receipt h3{font-family:var(--dot);font-size:18px;text-align:center;letter-spacing:.3em}
+.receipt .r{display:flex;gap:8px;align-items:baseline}
+.receipt .r i{flex:1;border-bottom:2px dotted currentColor;min-width:12px;translate:0 -4px}
+.receipt .r span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+.receipt .tag{font-size:11.5px;border:1.5px solid currentColor;padding:0 5px}
+.receipt .tag.due{background:#14173d;color:#fff}
+.receipt hr{border:0;border-top:2px dashed #14173d;width:100%;margin:2px 0}
+.receipt .sum{font-size:20px}
+.form{display:grid;gap:8px;grid-template-columns:1fr 1fr}
+.form .full{grid-column:1/-1}
+input,select{font:inherit;color:var(--ink);background:var(--bg);border:2.5px solid var(--edge);border-radius:10px;padding:9px 10px;width:100%;min-width:0}
+ul.plain{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+ul.plain li{display:flex;gap:10px;align-items:center;min-width:0}
+ul.plain li span{min-width:0;flex:1}
+.x{background:none;border:0;color:var(--muted);font-size:18px;padding:2px 8px}
+.settle{font-family:var(--dot);font-variant-numeric:tabular-nums;flex:none!important}
+
+/* ---- 持ち物: 数えるのも完了判定も CSS (:has + counter) ---- */
+.checkcard{counter-reset:done total}
+.check li{counter-increment:total}
+.check li:has(:checked){counter-increment:total done}
+.check label{display:flex;gap:10px;align-items:center;padding:5px 0;flex:1;min-width:0}
+.check input{appearance:none;width:24px;height:24px;flex:none;padding:0;border-radius:7px;background:var(--card);display:grid;place-items:center;transition:rotate .2s,background .2s}
+.check input::after{content:"";width:11px;height:6px;border:solid var(--ai-deep);border-width:0 0 3px 3px;rotate:-45deg;translate:0 -1px;scale:0;transition:scale .2s cubic-bezier(.3,1.8,.5,1)}
+.check input:checked{background:var(--dashi);rotate:-8deg}
+.check input:checked::after{scale:1}
+.check input:checked+span{color:var(--muted);text-decoration:line-through wavy var(--shu)}
+.check-sum{font-family:var(--display);font-size:15px;justify-self:start;background:var(--ai-deep);color:var(--dashi);border-radius:999px;padding:3px 14px;transition:background .3s,rotate .3s}
+.check-sum::before{content:"準備 " counter(done) " / " counter(total)}
+.checkcard:not(:has(.check input:not(:checked))) .check-sum{background:var(--shu);color:var(--ai-deep);rotate:-3deg}
+.checkcard:not(:has(.check input:not(:checked))) .check-sum::after{content:"　いつでも行ける！"}
+.sync{margin:0;font-family:var(--dot);font-size:12.5px;justify-self:start;border:2px solid var(--edge);border-radius:999px;padding:1px 12px}
+.sync::before{content:"● ";color:var(--muted)}
+.sync[data-state="cloud"]::before{color:var(--olive)}
+.sync[data-state="error"]::before{color:var(--shu)}
+.board .pos{flex:none;font-family:var(--display);width:28px;height:28px;display:grid;place-items:center;border:2px solid var(--edge);border-radius:50%;background:var(--card)}
+.board li:first-child .pos{background:var(--dashi);color:var(--ai-deep);rotate:-8deg}
+.board li.mine{font-weight:900}
+/* ---- 写真: ポラロイド ---- */
+.vh{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.drop{display:grid;place-items:center;min-height:92px;padding:12px;text-align:center;font-family:var(--display);border:2.5px dashed var(--edge);border-radius:12px;cursor:pointer;
+  background:repeating-linear-gradient(-45deg,#0000 0 10px,color-mix(in oklch,var(--dashi) 34%,#0000) 10px 20px)}
+.drop:has(+input:focus-visible){outline:3px solid var(--shu);outline-offset:3px}
+.drop span{background:var(--card);border:2px solid var(--edge);border-radius:999px;padding:4px 14px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn:disabled{opacity:.5}
+.album{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 14px}
+.album>.empty{grid-column:1/-1}
+.pola{display:grid;gap:2px;background:#fff;color:#14173d;border:0;padding:8px 8px 10px;text-align:left;box-shadow:5px 5px 0 var(--edge);font-family:var(--dot);min-width:0;transition:rotate .25s,scale .25s cubic-bezier(.3,1.6,.5,1)}
+.pola img{width:100%;aspect-ratio:1;object-fit:cover;background:#d9dde8;display:block}
+.pola span{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:6px}
+.pola small{font-size:11px;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.album .pola:nth-child(4n+1){rotate:-3deg}.album .pola:nth-child(4n+2){rotate:2deg}.album .pola:nth-child(4n+3){rotate:1.5deg}.album .pola:nth-child(4n){rotate:-2deg}
+.album .pola:active{rotate:0deg;scale:1.04}
+@supports (animation-timeline:view()){ @media (prefers-reduced-motion:no-preference){
+  .album .pola{animation:drop linear both;animation-timeline:view();animation-range:entry 0% entry 80%}
+}}
+@keyframes drop{from{opacity:0;translate:0 50px;scale:.8}}
+.strip{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}
+.strip button{flex:none;width:104px;padding:5px;background:#fff;border:2px solid var(--edge);scroll-snap-align:start}
+.strip img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+/* 拡大表示: dialog + @starting-style で出入りをアニメーション */
+#viewer{border:0;padding:0;background:none;color:inherit;width:min(92vw,520px);max-height:none;overflow:visible;
+  opacity:0;scale:.7;rotate:-10deg;transition:opacity .3s,scale .35s cubic-bezier(.3,1.5,.5,1),rotate .35s,display .35s allow-discrete,overlay .35s allow-discrete}
+#viewer[open]{opacity:1;scale:1;rotate:-1.5deg}
+@starting-style{#viewer[open]{opacity:0;scale:.7;rotate:-10deg}}
+#viewer::backdrop{background:color-mix(in oklch,var(--ai-deep) 82%,#0000);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.pola.big{box-shadow:8px 8px 0 var(--shu);padding:12px 12px 16px}
+.pola.big img{aspect-ratio:auto;max-height:66dvh;object-fit:contain;background:#14173d}
+.pola.big span{font-size:17px;white-space:normal}
+[hidden]{display:none!important}
+/* ---- 入口 ---- */
+#gate{position:fixed;inset:0;z-index:3000;overflow-y:auto;color:var(--men)}
+#gate .wrap{display:grid;gap:0;min-height:100%;align-content:center;padding-block:32px}
+#gate .card{color:var(--ink);margin-top:34px;rotate:.8deg}
+#gate h1{animation:none}
+body:has(#gate:not([hidden])){overflow:hidden}
+body:has(#gate:not([hidden])) :is(main,nav,.noodle){visibility:hidden}
+.shake{animation:shake .4s}
+@keyframes shake{20%{translate:-10px 0;rotate:-1deg}40%{translate:9px 0}60%{translate:-6px 0;rotate:1.5deg}80%{translate:4px 0}}
+.whoami{grid-column:1/-1}
+.who-name{flex:1;min-width:0;font-weight:900}
+footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8px}
+</style>
+</head>
+<body>
+<div class="noodle" aria-hidden="true"></div>
+
+<div class="hero" id="gate" hidden>
+  <div class="wrap">
+    <p class="eyebrow">2026.11.28 SAT → 11.30 MON</p>
+    <h1><span class="big">香川</span><span class="sub">旅のしおり</span></h1>
+    <form class="card" id="pwForm">
+      <h3>あいことば</h3>
+      <input id="pw" type="password" autocomplete="current-password" aria-label="あいことば" placeholder="教えてもらったパスワード">
+      <button class="btn" type="submit">ひらく</button>
+      <p class="lead" id="pwHint" role="status"></p>
+    </form>
+    <div class="card" id="whoStep" hidden>
+      <h3>だれですか？</h3>
+      <p class="lead" id="whoLead"></p>
+      <div class="row" id="whoList"></div>
+      <form class="row" id="regForm">
+        <input id="regName" maxlength="12" placeholder="はじめての人はニックネーム" autocomplete="nickname" style="flex:1" aria-label="ニックネーム">
+        <button class="btn small" type="submit">登録</button>
+      </form>
+      <p class="lead" id="regHint" role="status"></p>
+    </div>
+  </div>
+</div>
+
+<main>
+  <section class="tab" id="tab-plan">
+    <header class="hero">
+      <div class="wrap">
+        <p class="eyebrow">2026.11.28 SAT → 11.30 MON</p>
+        <div class="sticker"><span class="burst" aria-hidden="true"></span><span class="sticker-txt" id="sticker"></span></div>
+        <h1><span class="big">香川</span><span class="sub">旅のしおり</span></h1>
+        <div class="now" id="now" aria-live="polite"></div>
+      </div>
+    </header>
+    <div class="ticker" aria-hidden="true"><div id="ticker"></div></div>
+    <div class="wrap" id="plan"></div>
+  </section>
+
+  <section class="tab" id="tab-map" hidden><div class="wrap">
+    <h2>地図</h2>
+    <div class="row">
+      <button class="btn" id="gpsBtn" type="button">現在地を表示</button>
+      <span id="gpsMsg">ボタンを押すと、位置情報の許可を求めます。</span>
+    </div>
+    <div id="map"></div>
+    <div class="legend" id="legend"></div>
+  </div></section>
+
+  <section class="tab" id="tab-spots" hidden><div class="wrap">
+    <h2>お店</h2>
+    <div class="spots" id="shopList"></div>
+    <h2>宿・交通</h2>
+    <div class="spots" id="baseList"></div>
+  </div></section>
+
+  <section class="tab" id="tab-udon" hidden><div class="wrap">
+    <h2>うどん玉カウンター</h2>
+    <div class="card udon">
+      <div class="bowl" id="bowl" aria-hidden="true">
+        <span class="steam"></span><span class="steam"></span><span class="steam"></span>
+        <div class="cup"></div><div class="foot"></div>
+      </div>
+      <div style="min-width:0">
+        <div class="count" id="udCount" role="status"><small>玉</small></div>
+        <div class="rank" id="udRank"></div>
+      </div>
+      <div class="pm">
+        <button class="round" id="udMinus" type="button" aria-label="1玉減らす">−</button>
+        <button class="round fill" id="udPlus" type="button">1玉 食べた！</button>
+      </div>
+      <div class="row whoami"><span class="who-name"></span><button class="btn small ghost relog" type="button">名前を変える</button></div>
+      <p class="lead" style="grid-column:1/-1">10玉でどんぶりが満杯。</p>
+    </div>
+
+    <h2>みんなの玉数</h2>
+    <div class="card"><ul class="plain board" id="udBoard"></ul><p class="sync"></p></div>
+
+    <h2>セルフうどんの頼み方</h2>
+    <div class="card">
+      <ol class="steps">
+        <li><span>列に並び、順番が来たら<b>メニューと玉数</b>を伝える（例:「かけ、小」）。</span></li>
+        <li><span>麺を受け取る。店によっては自分で湯に通して温める。</span></li>
+        <li><span>天ぷらやおにぎりを皿に取る。</span></li>
+        <li><span>会計する。現金のみの店が多いので小銭を用意。</span></li>
+        <li><span>だしを自分で注ぎ、ねぎ・しょうが・天かすをのせる。</span></li>
+        <li><span>食べ終わったら器を返却口へ。</span></li>
+      </ol>
+      <p class="lead">流れは店ごとに違います。迷ったら前の人のまねをするのが確実です。</p>
+    </div>
+
+    <h2>用語集</h2>
+    <div class="card"><dl class="gloss">
+      <div><dt>小・中・大</dt><dd>多くの店で 小=1玉、中=2玉、大=3玉。はしごするなら小。</dd></div>
+      <div><dt>かけ</dt><dd>だしをかけた基本の一杯。</dd></div>
+      <div><dt>ぶっかけ</dt><dd>濃いめのだしを少量かける。麺のコシが分かりやすい。</dd></div>
+      <div><dt>釜あげ</dt><dd>ゆでたての麺を湯ごと器へ。つけだしで食べる。</dd></div>
+      <div><dt>釜玉</dt><dd>釜あげ麺に生卵としょうゆ。ゆで上がり待ちになることがある。</dd></div>
+      <div><dt>しょうゆ</dt><dd>麺にしょうゆを回しかけるだけ。麺そのものを味わう。</dd></div>
+      <div><dt>ひやあつ</dt><dd>冷たい麺に熱いだし。前が麺、後ろがだしの温度。</dd></div>
+      <div><dt>あつあつ</dt><dd>温かい麺に熱いだし。</dd></div>
+      <div><dt>ひやひや</dt><dd>冷たい麺に冷たいだし。</dd></div>
+      <div><dt>玉切れ</dt><dd>麺が売り切れて閉店すること。人気店は昼過ぎに終わる。</dd></div>
+    </dl></div>
+
+    <h2>はしごのコツ</h2>
+    <div class="card"><ul class="tips">
+      <li>人気店は朝が勝負。開店直後が並ばず、麺も良い状態。</li>
+      <li>日曜・月曜が定休の店がある。29日は日曜、30日は月曜なので店ごとに確認。</li>
+      <li>1軒は小1玉と天ぷら1個までにすると3軒回れる。</li>
+    </ul></div>
+  </div></section>
+
+  <section class="tab" id="tab-photo" hidden><div class="wrap">
+    <h2>写真</h2>
+    <form class="card" id="photoForm">
+      <label class="drop" for="photoFile"><span id="photoPick">写真を選ぶ・撮る</span></label>
+      <input class="vh" id="photoFile" type="file" accept="image/*">
+      <div class="row whoami"><span class="who-name"></span><button class="btn small ghost relog" type="button">名前を変える</button></div>
+      <select id="photoSpot" aria-label="場所"></select>
+      <input id="photoCap" maxlength="40" placeholder="ひとこと（なくてもOK）" autocomplete="off" aria-label="ひとこと">
+      <button class="btn" id="photoSend" type="submit">アップする</button>
+      <p class="lead" id="photoHint"></p>
+    </form>
+    <div class="album" id="album"></div>
+  </div></section>
+
+  <section class="tab" id="tab-tools" hidden><div class="wrap">
+    <h2>予約済みの費用</h2>
+    <div class="receipt-wrap"><div class="receipt" id="receipt"></div></div>
+
+    <h2>割り勘</h2>
+    <div class="card">
+      <h3>メンバー</h3>
+      <div class="row whoami"><span class="who-name"></span><button class="btn small ghost relog" type="button">名前を変える</button></div>
+      <ul class="plain" id="memberList"></ul>
+      <form class="row" id="memberForm">
+        <input id="memberName" placeholder="名前を追加" autocomplete="off" style="flex:1" aria-label="メンバーの名前">
+        <button class="btn small" type="submit">追加</button>
+      </form>
+    </div>
+    <div class="card">
+      <h3>立て替えを記録</h3>
+      <form class="form" id="expForm">
+        <select id="expPayer" aria-label="払った人"></select>
+        <input id="expAmount" type="number" inputmode="numeric" min="1" placeholder="金額（円）" aria-label="金額">
+        <input id="expMemo" class="full" placeholder="内容（例: ガソリン代）" autocomplete="off" aria-label="内容">
+        <button class="btn full" type="submit">記録する</button>
+      </form>
+      <p class="lead" id="expHint"></p>
+      <ul class="plain" id="expList"></ul>
+    </div>
+    <div class="card">
+      <h3>精算</h3>
+      <ul class="plain" id="settleList"></ul>
+      <p class="sync"></p>
+    </div>
+
+    <h2>持ち物</h2>
+    <div class="card checkcard">
+      <ul class="plain check" id="checkList"></ul>
+      <div class="check-sum" aria-hidden="true"></div>
+      <form class="row" id="checkForm">
+        <input id="checkName" placeholder="持ち物を追加" autocomplete="off" style="flex:1" aria-label="持ち物">
+        <button class="btn small" type="submit">追加</button>
+      </form>
+    </div>
+    <button class="btn small ghost" id="logout" type="button" style="justify-self:start">ログアウト</button>
+    <footer>地図: 国土地理院　天気: Open-Meteo</footer>
+  </div></section>
+</main>
+
+<dialog id="viewer" aria-label="写真">
+  <div class="pola big"><div id="viewImg"></div><span id="viewCap"></span><small id="viewMeta"></small></div>
+  <div class="row" style="justify-content:center;margin-top:16px">
+    <button class="btn" id="viewClose" type="button">とじる</button>
+    <button class="btn ghost small" id="viewDel" type="button">削除</button>
+  </div>
+</dialog>
+
+<nav><div class="bar" role="tablist">
+  <span class="ind" aria-hidden="true"></span>
+  <button type="button" role="tab" data-tab="plan" aria-selected="true">行程</button>
+  <button type="button" role="tab" data-tab="map" aria-selected="false">地図</button>
+  <button type="button" role="tab" data-tab="spots" aria-selected="false">場所</button>
+  <button type="button" role="tab" data-tab="udon" aria-selected="false">うどん</button>
+  <button type="button" role="tab" data-tab="photo" aria-selected="false">写真</button>
+  <button type="button" role="tab" data-tab="tools" aria-selected="false">お金</button>
+</div></nav>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+"use strict";
+/* ============================================================
+   データ（ここを書き換えれば内容が変わります）
+   ============================================================ */
+
+// 行程・スポット・費用は、あいことばを通ったあとにスプレッドシートから読み込む。
+let SPOTS = [];
+let DAYS = [];
+let COSTS = [];
+
+// Googleドライブ連携: Apps Script の「ウェブアプリのURL」。
+const API_URL = "https://script.google.com/macros/s/AKfycbwbFV3LHTasSAZl-KmH-9GHGTH0lYL6k1lxaWcSoiFXO8tGRqPPyE8JUL2GBs_R4fY/exec";
+let API_KEY = "";   // あいことば。入力されたものを端末に覚える（ソースには書かない）
+const DAY_TITLES = { "2026-11-28":"移動日", "2026-11-29":"レンタカー1日目", "2026-11-30":"レンタカー2日目・帰り" };
+
+const TICKER = ["うどん","骨付鳥","瀬戸内海","KAGAWA","オリーブ","讃岐","ひやあつ小","TAKAMATSU"];
+
+const DEFAULT_CHECK = ["運転免許証","航空券（予約番号）","現金・小銭（うどん店用）","スマホ充電器・モバイルバッテリー","着替え2日分","上着（11月末の夜は冷える）","歯ブラシ・洗面用具","常備薬","エコバッグ（おみやげ用）"];
+
+const KIND = { shop:{label:"お店",color:"#ef5b2a"}, stay:{label:"宿",color:"#6e8f1c"}, transit:{label:"交通",color:"#2b3a9e"} };
+
+/* ============================================================ */
+const $ = s => document.querySelector(s);
+const el = (tag, props={}, ...kids) => { const e=document.createElement(tag); Object.assign(e,props); kids.forEach(k=>e.append(k)); return e; };
+const store = {
+  get(k,d){ try{ const v=localStorage.getItem("kagawa."+k); return v==null?d:JSON.parse(v);}catch(e){return d;} },
+  set(k,v){ try{ localStorage.setItem("kagawa."+k,JSON.stringify(v)); }catch(e){} }
+};
+const yen = n => Math.round(n).toLocaleString("ja-JP")+"円";
+const at = (date,t) => new Date(`${date}T${t}:00+09:00`);
+const spotById = id => SPOTS.find(s=>s.id===id);
+const gmapUrl = s => "https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(s.gmap||s.name);
+const calm = matchMedia("(prefers-reduced-motion:reduce)");
+
+/* ---------- タブ ---------- */
+let map=null;
+function showTab(name, ev){
+  const go=()=>{
+    document.querySelectorAll("section.tab").forEach(s=>s.hidden = s.id!=="tab-"+name);
+    document.querySelectorAll(".bar button").forEach(b=>b.setAttribute("aria-selected", b.dataset.tab===name));
+    if(name==="map"){ initMap(); setTimeout(()=>map&&map.invalidateSize(),50); }
+    window.scrollTo(0,0);
+    store.set("tab",name);
+  };
+  if(ev&&ev.clientX) document.documentElement.style.setProperty("--vx",ev.clientX+"px");
+  if(document.startViewTransition && !calm.matches) { const t=document.startViewTransition(go); t.ready.catch(()=>{}); t.finished.catch(()=>{}); } else go();
+}
+document.querySelectorAll(".bar button").forEach(b=>b.addEventListener("click",ev=>showTab(b.dataset.tab,ev)));
+
+/* ---------- いま・つぎ ---------- */
+const buildAll = () => DAYS.flatMap(d=>d.events.map(e=>({...e, when:at(d.date,e.t), day:d})));
+let ALL = buildAll();
+function fmtLeft(ms){
+  const m=Math.max(0,Math.round(ms/60000));
+  if(m>=2880) return Math.floor(m/1440)+"日後";
+  if(m>=60) return Math.floor(m/60)+"時間"+(m%60?(m%60)+"分":"")+"後";
+  return m+"分後";
+}
+function currentIndex(now){ let i=-1; ALL.forEach((e,k)=>{ if(e.when<=now) i=k; }); return i; }
+function renderNow(){
+  if(!ALL.length) return;
+  const now=new Date(), box=$("#now"), st=$("#sticker"); box.textContent=""; st.textContent="";
+  const start=ALL[0].when, end=new Date(ALL[ALL.length-1].when.getTime()+3600000);
+  const row=(tag,main,sub)=>{ const b=el("div",{className:"now-body"},main); if(sub) b.append(el("span",{className:"now-sub",textContent:sub}));
+    box.append(el("div",{className:"now-row"},el("span",{className:"now-tag",textContent:tag}),b)); };
+  const stick=(big,small)=>st.append(el("b",{textContent:big}),el("small",{textContent:small}));
+  if(now<start){
+    const days=Math.ceil((at(DAYS[0].date,"00:00")-now)/86400000);
+    stick(days>0?String(days):"今日", days>0?"日後に出発":"出発！");
+    row("出発",`${ALL[0].day.label}(${ALL[0].day.dow}) ${ALL[0].t} ${ALL[0].what}`,"高松で会いましょう");
+  }else if(now>end){
+    stick("完","おつかれ！"); row("完了","おつかれさまでした","精算がまだなら「お金」タブへ");
+  }else{
+    const i=currentIndex(now), cur=ALL[i], nxt=ALL[i+1];
+    stick(String(DAYS.indexOf(cur.day)+1),"日目");
+    row("いま", cur.what, cur.day.label+" "+cur.t+"〜");
+    if(nxt){ const s=nxt.spot&&spotById(nxt.spot); const d=s&&distTo(s);
+      row("つぎ", nxt.what, `${nxt.day.label} ${nxt.t}（${fmtLeft(nxt.when-now)}）`+(d!=null?`・ここから${fmtKm(d)}`:"")); }
+  }
+  document.querySelectorAll(".tl li").forEach(li=>li.classList.remove("current"));
+  if(now>=start && now<=end){ const li=document.querySelector(`.tl li[data-i="${currentIndex(now)}"]`); if(li) li.classList.add("current"); }
+}
+
+/* ---------- 行程 ---------- */
+function ticketEl(d,e){
+  const k=e.ticket;
+  const main=el("div",{className:"t-main"},el("span",{className:"t-label",textContent:"BOARDING PASS"}),
+    el("div",{className:"t-route"},el("span",{textContent:k.from}),el("i"),el("span",{textContent:k.to})),
+    el("div",{className:"t-times",textContent:`${k.dep} → ${k.arr}`}));
+  const stub=el("div",{className:"t-stub"},el("span",{textContent:d.label}),el("span",{className:"barcode"}));
+  const t=el("div",{className:"ticket"},main,stub); t.setAttribute("aria-label",`${e.what} ${k.dep}発 ${k.arr}着`);
+  return el("div",{className:"ticket-wrap"},t);
+}
+function renderPlan(){
+  const root=$("#plan"); root.textContent=""; let idx=0;
+  DAYS.forEach(d=>{
+    const ul=el("ul",{className:"tl"});
+    d.events.forEach(e=>{
+      const li=el("li",{className:e.open?"open":""}); li.dataset.i=idx++;
+      if(e.ticket){ li.append(ticketEl(d,e)); ul.append(li); return; }
+      li.append(el("time",{textContent:e.t}),el("span",{className:"what",textContent:e.what}));
+      if(e.memo) li.append(el("span",{className:"memo",textContent:e.memo}));
+      if(e.spot&&spotById(e.spot)){ const s=spotById(e.spot); li.append(el("a",{href:gmapUrl(s),target:"_blank",rel:"noopener",textContent:"ナビを開く ↗",className:"memo"})); }
+      ul.append(li);
+    });
+    const num=el("div",{className:"day-num",textContent:d.label.split("/")[1]}); num.setAttribute("aria-hidden","true");
+    const head=el("div",{className:"day-head"},el("span",{className:"date",textContent:`${d.label} ${d.dow}`}),el("h3",{textContent:d.title}));
+    root.append(el("div",{className:"day"},num,head,el("div",{className:"wx",id:"wx-"+d.date}),ul));
+  });
+  const tk=$("#ticker"); if(!tk.children.length) for(let r=0;r<2;r++) TICKER.concat(TICKER).forEach(w=>tk.append(el("span",{textContent:w+" ●"})));
+}
+
+/* ---------- 天気（Open-Meteo） ---------- */
+const WX={0:"快晴",1:"晴れ",2:"晴れ時々くもり",3:"くもり",45:"霧",48:"霧",51:"小雨",53:"小雨",55:"雨",61:"小雨",63:"雨",65:"大雨",71:"雪",73:"雪",75:"大雪",80:"にわか雨",81:"にわか雨",82:"強いにわか雨",95:"雷雨",96:"雷雨",99:"雷雨"};
+let WXJ=null;
+async function loadWeather(){
+  try{
+    const u="https://api.open-meteo.com/v1/forecast?latitude=34.34&longitude=134.05&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FTokyo&start_date=2026-11-28&end_date=2026-11-30";
+    if(!WXJ){ const r=await fetch(u); if(!r.ok) throw 0; WXJ=await r.json(); } const d=WXJ.daily;
+    d.time.forEach((day,i)=>{ const t=document.getElementById("wx-"+day); if(!t||d.temperature_2m_max[i]==null) return;
+      const p=d.precipitation_probability_max[i];
+      t.textContent=`${WX[d.weather_code[i]]||"—"} ${Math.round(d.temperature_2m_max[i])}°/${Math.round(d.temperature_2m_min[i])}°`+(p!=null?` 雨${p}%`:""); });
+  }catch(e){ /* 予報の範囲外や圏外のときは何も出さない */ }
+}
+
+/* ---------- 距離 ---------- */
+let me=null;
+function km(a,b){ const R=6371,r=x=>x*Math.PI/180; const dLa=r(b.lat-a.lat),dLo=r(b.lng-a.lng);
+  const h=Math.sin(dLa/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLo/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
+const distTo = s => me&&s.lat!=null ? km(me,s) : null;
+const fmtKm = d => d<1? Math.round(d*1000/10)*10+"m" : d.toFixed(d<10?1:0)+"km";
+
+/* ---------- スポット ---------- */
+function renderSpots(){
+  const shop=$("#shopList"), base=$("#baseList"); shop.textContent=""; base.textContent="";
+  const open=new Set(store.get("openSpots",[]));
+  SPOTS.forEach(s=>{
+    const k=KIND[s.kind]; const d=distTo(s);
+    const det=el("details",{className:"spot",id:"spot-"+s.id}); det.open=open.has(s.id);
+    det.addEventListener("toggle",()=>{ const o=new Set(store.get("openSpots",[])); det.open?o.add(s.id):o.delete(s.id); store.set("openSpots",[...o]); });
+    const tag=el("span",{className:"kind",textContent:k.label}); tag.style.background=k.color;
+    det.append(el("summary",{},tag,el("span",{className:"spot-name",textContent:s.name}),el("span",{className:"dist",textContent:d!=null?fmtKm(d):""})));
+    const body=el("div",{className:"spot-body"});
+    if(s.order) body.append(el("div",{className:"order",textContent:"おすすめの頼み方: "+s.order}));
+    const dl=el("dl"); Object.entries(s.info||{}).forEach(([a,b])=>dl.append(el("dt",{textContent:a}),el("dd",{textContent:b}))); body.append(dl);
+    if(s.tips&&s.tips.length){ const ul=el("ul",{className:"tips"}); s.tips.forEach(t=>ul.append(el("li",{textContent:t}))); body.append(ul); }
+    const row=el("div",{className:"row"});
+    row.append(el("a",{className:"btn small",href:gmapUrl(s),target:"_blank",rel:"noopener",textContent:"Googleマップでナビ"}));
+    const b=el("button",{className:"btn small ghost",type:"button",textContent:"地図で見る"}); b.addEventListener("click",ev=>{ showTab("map",ev); setTimeout(()=>focusSpot(s),650); }); if(s.lat!=null) row.append(b);
+    const ph=PHOTOS.filter(x=>x.spot===s.id);
+    if(ph.length){ const st=el("div",{className:"strip"}); ph.slice().reverse().forEach(x=>{ const b2=el("button",{type:"button"},photoImg(x,300)); b2.setAttribute("aria-label","写真を大きく表示"); b2.addEventListener("click",()=>openViewer(x)); st.append(b2); }); body.append(st); }
+    body.append(row); det.append(body);
+    (s.kind==="shop"?shop:base).append(det);
+  });
+  if(!shop.children.length){ const e=el("div",{className:"empty"}); e.append(el("b",{textContent:"お店はこれから追加します。"}),el("br"),"行きたい店が決まったら、営業時間・定休日・おすすめの頼み方つきでここに並びます。"); shop.append(e); }
+}
+
+/* ---------- 地図 ---------- */
+let meMarker=null, meCircle=null, markers={}, watching=false;
+function drawMarkers(fit){
+  if(!map) return;
+  Object.values(markers).forEach(m=>m.remove()); markers={};
+  const pts=[];
+  SPOTS.forEach(s=>{
+    if(s.lat==null) return;
+    const k=KIND[s.kind];
+    const icon=L.divIcon({className:"",html:`<div class="pin" style="background:${k.color}"></div>`,iconSize:[28,28],iconAnchor:[14,28],popupAnchor:[0,-26]});
+    const pop=el("div"); pop.append(el("b",{textContent:s.name}),el("br"));
+    const a=el("a",{href:"#",textContent:"詳細を見る"}); a.addEventListener("click",ev=>{ev.preventDefault(); showTab("spots",ev); const d=document.getElementById("spot-"+s.id); if(d){d.open=true; setTimeout(()=>d.scrollIntoView({block:"center"}),650);} });
+    pop.append(a," ・ ",el("a",{href:gmapUrl(s),target:"_blank",rel:"noopener",textContent:"ナビ"}));
+    markers[s.id]=L.marker([s.lat,s.lng],{icon,title:s.name}).addTo(map).bindPopup(pop);
+    pts.push([s.lat,s.lng]);
+  });
+  if(fit&&pts.length) map.fitBounds(pts,{padding:[30,30],maxZoom:14});
+}
+function initMap(){
+  if(map||!window.L) { if(!window.L) $("#gpsMsg").textContent="地図を読み込めませんでした。電波の良い場所で開き直してください。"; return; }
+  map=L.map("map",{zoomControl:true}).setView([34.30,134.03],10);
+  L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",{maxZoom:18,attribution:'<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>'}).addTo(map);
+  drawMarkers(true);
+  const lg=$("#legend"); Object.values(KIND).forEach(k=>{ const i=el("i"); i.style.background=k.color; lg.append(el("span",{},i,k.label)); });
+  const i=el("i"); i.style.background="#1a73e8"; lg.append(el("span",{},i,"現在地"));
+  if(me) drawMe();
+}
+function focusSpot(s){ if(!map||s.lat==null) return; map.invalidateSize(); map.setView([s.lat,s.lng],15); markers[s.id]&&markers[s.id].openPopup(); }
+function drawMe(){
+  if(!map||!me) return;
+  if(!meMarker){ meMarker=L.marker([me.lat,me.lng],{icon:L.divIcon({className:"",html:'<div class="me"></div>',iconSize:[20,20],iconAnchor:[10,10]}),zIndexOffset:1000,title:"現在地"}).addTo(map);
+    meCircle=L.circle([me.lat,me.lng],{radius:me.acc,color:"#1a73e8",weight:1,fillOpacity:.12}).addTo(map); }
+  else{ meMarker.setLatLng([me.lat,me.lng]); meCircle.setLatLng([me.lat,me.lng]).setRadius(me.acc); }
+}
+function startGps(center){
+  const msg=$("#gpsMsg");
+  if(!("geolocation" in navigator)){ msg.textContent="この端末では位置情報を使えません。"; return; }
+  if(watching){ if(me&&map) map.setView([me.lat,me.lng],Math.max(map.getZoom(),13)); return; }
+  msg.textContent="現在地を取得中…";
+  watching=true; let first=true;
+  navigator.geolocation.watchPosition(p=>{
+    me={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy};
+    drawMe(); renderSpots(); renderNow();
+    msg.textContent=`現在地を表示中（誤差 約${Math.round(me.acc)}m）`; $("#gpsBtn").textContent="現在地へ移動";
+    if(first&&center&&map){ map.setView([me.lat,me.lng],13); } first=false;
+  },err=>{
+    watching=false;
+    msg.textContent = err.code===1 ? "位置情報が許可されていません。ブラウザの設定でこのページを許可してください。"
+      : (location.protocol!=="https:"&&location.hostname!=="localhost") ? "位置情報は https で公開したページでのみ使えます。"
+      : "現在地を取得できませんでした。屋外でもう一度お試しください。";
+  },{enableHighAccuracy:true,maximumAge:10000,timeout:20000});
+}
+$("#gpsBtn").addEventListener("click",()=>startGps(true));
+
+/* ---------- 共有データ ----------
+   API_URL が入っていれば Googleドライブ（Apps Script）経由で全員共有、空ならこの端末だけに保存。 */
+let S={members:[],exps:[],udon:{}}, PHOTOS=[], syncState=API_URL?"connecting":"local", pending=0, chain=Promise.resolve(), sigA="", sigP="";
+const norm=d=>({members:(d&&d.members)||[],exps:(d&&d.exps)||[],udon:(d&&d.udon)||{}});
+const getMe=()=>{ const m=store.get("me",""); return S.members.includes(m)?m:""; };
+function renderShared(){ renderWho(); renderSplit(); renderUdon(); renderSync(); }
+function renderSync(){
+  const t={local:"この端末だけに保存中",connecting:"みんなのデータを読み込み中…",saving:"保存中…",cloud:"みんなと同期中",error:"同期できません。電波を確認してください"}[syncState];
+  document.querySelectorAll(".sync").forEach(e=>{ e.textContent=t; e.dataset.state=syncState; });
+}
+function renderWho(){
+  const me=getMe();
+  document.querySelectorAll(".who-name").forEach(e=>{ e.textContent=me?me+" でログイン中":"名前が未設定です"; });
+}
+document.querySelectorAll(".relog").forEach(b=>b.addEventListener("click",()=>showGate("who")));
+
+/* シートの行 → しおりのデータ */
+const KMAP={"お店":"shop","宿":"stay","交通":"transit"};
+const num=v=>{ const n=parseFloat(v); return isFinite(n)?n:null; };
+const lines=v=>String(v||"").split("\n").map(x=>x.trim()).filter(Boolean);
+function toSpot(r){
+  const info={};
+  [["営業",r.hours],["定休",r.closed],["支払い",r.pay],["駐車場",r.parking]].forEach(([k,v])=>{ if(v) info[k]=v; });
+  lines(r.info).forEach(l=>{ const m=l.match(/^(.+?)[:：]\s*(.+)$/); if(m) info[m[1].trim()]=m[2].trim(); else info["メモ"]=l; });
+  const lat=num(r.lat), lng=num(r.lng);
+  return { id:r.id, kind:KMAP[r.kind]||"shop", name:r.name, lat:lng==null?null:lat, lng:lat==null?null:lng, gmap:r.gmap||r.name, info, order:r.order||"", tips:lines(r.memo) };
+}
+function toDays(rows){
+  const hm=t=>{ const m=String(t||"").match(/^(\d{1,2})[:：](\d{2})/); return m?m[1].padStart(2,"0")+":"+m[2]:null; };
+  const by={};
+  rows.forEach(r=>{ const m=String(r.date||"").match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/), t=hm(r.time); if(!m||!t||!r.what) return;
+    const date=`${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`; (by[date]=by[date]||[]).push({...r,t}); });
+  return Object.keys(by).sort().map(date=>{
+    const [y,mo,d]=date.split("-").map(Number);
+    const events=by[date].sort((a,b)=>a.t.localeCompare(b.t)).map(r=>{
+      const s=SPOTS.find(x=>x.id===r.spot||x.name===r.spot);
+      const e={t:r.t,what:r.what,memo:r.memo||"",open:r.type==="未定"}; if(s) e.spot=s.id;
+      if(r.type==="飛行機") e.ticket={from:r.from||"",to:r.to||"",dep:r.t,arr:hm(r.arr)||""};
+      return e; });
+    return { date, label:`${mo}/${d}`, dow:"日月火水木金土"[new Date(Date.UTC(y,mo-1,d)).getUTCDay()], title:DAY_TITLES[date]||"", events };
+  });
+}
+
+async function call(body){
+  const r = body ? await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({key:API_KEY,...body})})
+                 : await fetch(API_URL+"?key="+encodeURIComponent(API_KEY));
+  const j=await r.json(); if(!j.ok) throw new Error(j.error||"error"); return j;
+}
+function applyState(j){
+  S=norm(j); PHOTOS=j.photos||[]; store.set("cloud",j);
+  const a=JSON.stringify([j.spots,j.plan,j.costs]), p=JSON.stringify(PHOTOS);
+  if(a!==sigA){ sigA=a; sigP="";
+    if(j.spots&&j.spots.length){ const sp=j.spots.map(toSpot).filter(x=>x.id&&x.name); if(sp.length) SPOTS=sp; }
+    if(j.plan&&j.plan.length){ const d=toDays(j.plan); if(d.length) DAYS=d; }
+    if(j.costs){ COSTS=j.costs.filter(c=>c.name).map(c=>({name:c.name,yen:Number(String(c.yen).replace(/[^\d.]/g,""))||0,paid:c.paid!=="現地払い"})); renderCosts(); }
+    ALL=buildAll(); renderPlan(); loadWeather(); drawMarkers(true); }
+  if(p!==sigP){ sigP=p; renderSpots(); renderPhotos(); }
+  renderShared(); renderNow();
+}
+async function refresh(){
+  if(!API_URL||!API_KEY||pending) return;
+  try{ const j=await call(null); if(!pending){ applyState(j); syncState="cloud"; if(!getMe()&&$("#gate").hidden) showGate("who"); } }
+  catch(e){ if(e.message==="key"){ logout(); return; } syncState="error"; }
+  renderSync();
+}
+// 画面は先に書き換え、送信は1件ずつ順番に。全部送り終えたらサーバーの内容で上書きする。
+function write(body,localFn){
+  localFn();
+  if(!API_URL){ store.set("shared",S); renderShared(); return Promise.resolve(true); }
+  const cached=store.get("cloud",null); if(cached) store.set("cloud",{...cached,members:S.members,exps:S.exps,udon:S.udon});  // 送信中に開き直しても消えないように
+  renderShared(); pending++; syncState="saving"; renderSync();
+  const done=chain.then(()=>call(body)).then(j=>{ pending--; if(!pending){ applyState(j); syncState="cloud"; renderSync(); } return true; },
+    ()=>{ pending--; syncState="error"; renderSync(); if(!pending) setTimeout(refresh,1500); return false; });
+  chain=done; return done;
+}
+const mut={
+  addMember:n=>write({action:"addMember",name:n},()=>{ if(!S.members.includes(n)) S.members.push(n); }),
+  delMember:n=>write({action:"delMember",name:n},()=>{ S.members=S.members.filter(m=>m!==n); }),
+  addExp:e=>write({action:"addExp",...e},()=>{ S.exps.push(e); }),
+  delExp:e=>write({action:"delExp",id:e.id},()=>{ S.exps=S.exps.filter(x=>x.id!==e.id); }),
+  udon:(n,d)=>write({action:"udon",name:n,delta:d},()=>{ S.udon[n]=Math.max(0,(S.udon[n]||0)+d); }),
+};
+/* ---------- ログイン: あいことば → ニックネーム ---------- */
+let polling=false;
+function startPolling(){ if(polling) return; polling=true;
+  setInterval(()=>{ if(!document.hidden) refresh(); },30000);
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden) refresh(); }); }
+function showGate(step){
+  $("#gate").hidden=false; $("#pwForm").hidden=step!=="pw"; $("#whoStep").hidden=step!=="who";
+  if(step==="who"){ const box=$("#whoList"); box.textContent="";
+    S.members.forEach(m=>{ const b=el("button",{className:"btn",type:"button",textContent:m}); b.addEventListener("click",()=>loginAs(m)); box.append(b); });
+    $("#whoLead").textContent=S.members.length?"自分の名前をタップ。はじめての人は下で登録。":"最初のひとりです。ニックネームを登録してください。";
+    $("#regHint").textContent=""; }
+  else setTimeout(()=>$("#pw").focus(),50);
+}
+function loginAs(m){ store.set("me",m); $("#gate").hidden=true; renderShared(); renderNow(); }
+function logout(){ API_KEY=""; store.set("pw",""); store.set("cloud",null); $("#pw").value=""; $("#pwHint").textContent=""; showGate("pw"); }
+$("#pwForm").addEventListener("submit",async ev=>{ ev.preventDefault();
+  const hint=$("#pwHint"), v=$("#pw").value.trim(); if(!v) return;
+  API_KEY=v; hint.textContent="確認中…";
+  try{ const j=await call(null); store.set("pw",v); applyState(j); syncState="cloud"; renderSync(); hint.textContent=""; startPolling();
+    if(getMe()) $("#gate").hidden=true; else showGate("who"); }
+  catch(e){ API_KEY=""; hint.textContent=e.message==="key"?"あいことばが違います。":"つながりませんでした。電波を確認してください。";
+    const f=$("#pwForm"); f.classList.remove("shake"); void f.offsetWidth; f.classList.add("shake"); }
+});
+$("#regForm").addEventListener("submit",ev=>{ ev.preventDefault();
+  const n=$("#regName").value.trim(); if(!n){ $("#regHint").textContent="ニックネームを入れてください。"; return; }
+  $("#regName").value=""; store.set("me",n); if(!S.members.includes(n)) mut.addMember(n); loginAs(n); });
+$("#logout").addEventListener("click",logout);
+function initShared(){
+  API_KEY=store.get("pw","")||"";
+  renderShared(); renderPhotos();
+  if(!API_KEY){ showGate("pw"); return; }
+  const c=store.get("cloud",null);
+  if(c){ applyState(c); if(!getMe()) showGate("who"); }
+  refresh(); startPolling();
+}
+
+/* ---------- 写真 ---------- */
+const purl=(id,w)=>`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w${w}`;
+function photoImg(p,w){
+  const im=el("img",{alt:p.caption||"旅の写真",loading:"lazy"}); im.referrerPolicy="no-referrer"; im.src=purl(p.id,w);
+  im.addEventListener("error",()=>{ if(!im.dataset.f){ im.dataset.f="1"; im.src=`https://lh3.googleusercontent.com/d/${encodeURIComponent(p.id)}=w${w}`; } });
+  return im;
+}
+const spotName=id=>{ const s=spotById(id); return s?s.name:""; };
+function renderPhotos(){
+  const al=$("#album"), sel=$("#photoSpot"), keep=sel.value; al.textContent=""; sel.textContent="";
+  sel.append(el("option",{value:"",textContent:"場所を選ぶ（なくてもOK）"})); SPOTS.forEach(s=>sel.append(el("option",{value:s.id,textContent:s.name}))); sel.value=keep;
+  $("#photoForm").hidden=!API_URL;
+  const empty=t=>{ const e=el("div",{className:"empty"}); e.append(el("b",{textContent:t[0]}),el("br"),t[1]); al.append(e); };
+  if(!API_URL) return empty(["アルバムは準備中です。","Googleドライブとつなぐと、ここにみんなの写真が並びます。"]);
+  if(!PHOTOS.length) return empty(["まだ写真がありません。","最初の1枚をどうぞ。"]);
+  PHOTOS.slice().reverse().forEach(p=>{
+    const b=el("button",{className:"pola",type:"button"},photoImg(p,400),el("span",{textContent:p.caption||spotName(p.spot)||"　"}),el("small",{textContent:`${p.by}・${p.time}`}));
+    b.addEventListener("click",()=>openViewer(p)); al.append(b); });
+}
+function shrink(file){ return new Promise((res,rej)=>{ const u=URL.createObjectURL(file), im=new Image();
+  im.onload=()=>{ const k=Math.min(1,1600/Math.max(im.naturalWidth,im.naturalHeight)); const c=document.createElement("canvas");
+    c.width=Math.round(im.naturalWidth*k); c.height=Math.round(im.naturalHeight*k); c.getContext("2d").drawImage(im,0,0,c.width,c.height);
+    URL.revokeObjectURL(u); res(c.toDataURL("image/jpeg",.82).split(",")[1]); };
+  im.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error("img")); }; im.src=u; }); }
+$("#photoFile").addEventListener("change",()=>{ const f=$("#photoFile").files[0]; $("#photoPick").textContent=f?"選択中: "+f.name:"写真を選ぶ・撮る"; });
+$("#photoForm").addEventListener("submit",async ev=>{ ev.preventDefault();
+  const hint=$("#photoHint"), f=$("#photoFile").files[0], me=getMe(), btn=$("#photoSend");
+  if(!me){ hint.textContent="先に自分の名前を選んでください。"; return; }
+  if(!f){ hint.textContent="写真を選んでください。"; return; }
+  btn.disabled=true; hint.textContent="アップ中…（数秒かかります）";
+  try{
+    const data=await shrink(f);
+    const ok=await write({action:"addPhoto",data,spot:$("#photoSpot").value,by:me,caption:$("#photoCap").value.trim()},()=>{});
+    hint.textContent=ok?"アップしました。":"アップできませんでした。電波を確認してもう一度お試しください。";
+    if(ok){ $("#photoFile").value=""; $("#photoCap").value=""; $("#photoPick").textContent="写真を選ぶ・撮る"; }
+  }catch(e){ hint.textContent="この画像は読み込めませんでした。別の写真でお試しください。"; }
+  btn.disabled=false; });
+let viewing=null;
+function openViewer(p){
+  viewing=p; const v=$("#viewer"); const im=photoImg(p,1600); im.loading="eager";
+  $("#viewImg").replaceChildren(im); $("#viewCap").textContent=p.caption||spotName(p.spot)||"";
+  $("#viewMeta").textContent=[spotName(p.spot),p.by,p.time].filter(Boolean).join("・");
+  const d=$("#viewDel"); d.textContent="削除"; d.dataset.armed="";
+  if(!v.open) v.showModal();
+}
+$("#viewClose").addEventListener("click",()=>$("#viewer").close());
+$("#viewer").addEventListener("click",ev=>{ if(ev.target===$("#viewer")) $("#viewer").close(); });
+$("#viewDel").addEventListener("click",()=>{ const d=$("#viewDel");
+  if(!d.dataset.armed){ d.dataset.armed="1"; d.textContent="もう一度押すと削除"; return; }
+  const p=viewing; $("#viewer").close(); write({action:"delPhoto",id:p.id},()=>{ PHOTOS=PHOTOS.filter(x=>x.id!==p.id); sigP=""; renderSpots(); renderPhotos(); }); });
+
+/* ---------- うどんカウンター（数字と麺の量は CSS の @property が動かす） ---------- */
+function renderUdon(){
+  const me=getMe(), n=me?(S.udon[me]||0):0, c=$("#udCount"), b=$("#bowl");
+  c.style.setProperty("--n",n); c.setAttribute("aria-label",n+"玉");
+  b.style.setProperty("--fill",Math.min(100,n*10)); b.classList.toggle("hot",n>0);
+  $("#udRank").textContent = !me?"名前を選ぶと数えられます":n===0?"まだ0玉":n<3?"うどん見習い":n<6?"はしご初段":n<10?"讃岐の旅人":"うどん県 名誉県民";
+  const bd=$("#udBoard"); bd.textContent="";
+  const rows=S.members.map(m=>({m,v:S.udon[m]||0})).sort((a,b)=>b.v-a.v);
+  if(!rows.length) bd.append(el("li",{},el("span",{className:"lead",textContent:"メンバーを追加すると、全員の玉数がここに並びます。"})));
+  rows.forEach((r,i)=>bd.append(el("li",{className:r.m===me?"mine":""},el("span",{className:"pos",textContent:String(i+1)}),el("span",{textContent:r.m}),el("span",{className:"settle",textContent:r.v+"玉"}))));
+}
+function bump(d){ const me=getMe(); if(!me){ $("#udRank").textContent="先に自分の名前を選んでください"; return; }
+  if(d<0&&(S.udon[me]||0)<=0) return; mut.udon(me,d); }
+$("#udPlus").addEventListener("click",()=>bump(1));
+$("#udMinus").addEventListener("click",()=>bump(-1));
+
+/* ---------- 費用（レシート） ---------- */
+function renderCosts(){
+  const t=$("#receipt"); t.textContent=""; let sum=0, due=0;
+  const line=(name,val,tag,cls)=>{ const r=el("div",{className:"r"+(cls?" "+cls:"")},el("span",{textContent:name})); if(tag) r.append(tag); r.append(el("i"),el("span",{textContent:val})); return r; };
+  t.append(el("h3",{textContent:"領収書"}),el("hr"));
+  COSTS.forEach(c=>{ sum+=c.yen; if(!c.paid) due+=c.yen;
+    t.append(line(c.name,yen(c.yen),el("span",{className:"tag"+(c.paid?"":" due"),textContent:c.paid?"済":"現地"}))); });
+  t.append(el("hr"),line("合計",yen(sum),null,"sum"),line("うち現地払い",yen(due)));
+}
+
+/* ---------- 割り勘 ---------- */
+function renderSplit(){
+  const members=S.members, exps=S.exps, me=getMe();
+  const ml=$("#memberList"); ml.textContent="";
+  members.forEach(m=>{ const x=el("button",{className:"x",type:"button",textContent:"×"}); x.setAttribute("aria-label",m+"を削除");
+    x.addEventListener("click",()=>{ if(exps.some(e=>e.payer===m)){ $("#expHint").textContent=m+"さんの立て替えが残っているので削除できません。"; return; } mut.delMember(m); });
+    ml.append(el("li",{},el("span",{textContent:m}),x)); });
+  if(!members.length) ml.append(el("li",{},el("span",{className:"lead",textContent:"まず旅のメンバーを追加してください。"})));
+  const sel=$("#expPayer"); const keep=sel.value||me; sel.textContent=""; members.forEach(m=>sel.append(el("option",{value:m,textContent:m+" が払った"}))); if(members.includes(keep)) sel.value=keep;
+  const xl=$("#expList"); xl.textContent="";
+  exps.forEach(e=>{ const x=el("button",{className:"x",type:"button",textContent:"×"}); x.setAttribute("aria-label","この記録を削除");
+    x.addEventListener("click",()=>mut.delExp(e));
+    xl.append(el("li",{},el("span",{textContent:`${e.memo||"（内容なし）"}・${e.payer}`}),el("span",{className:"settle",textContent:yen(e.yen)}),x)); });
+  const sl=$("#settleList"); sl.textContent="";
+  if(members.length<2||!exps.length){ sl.append(el("li",{},el("span",{className:"lead",textContent:"メンバー2人以上と立て替えの記録があると、誰が誰にいくら払うかを表示します。"}))); return; }
+  const total=exps.reduce((a,e)=>a+e.yen,0), share=total/members.length;
+  const bal=members.map(m=>({m,v:exps.filter(e=>e.payer===m).reduce((a,e)=>a+e.yen,0)-share}));
+  sl.append(el("li",{},el("span",{textContent:`合計 ${yen(total)}・1人あたり ${yen(share)}`})));
+  const debt=bal.filter(b=>b.v<-0.5).map(b=>({...b,v:-b.v})), cred=bal.filter(b=>b.v>0.5);
+  let i=0,j=0;
+  while(i<debt.length&&j<cred.length){ const pay=Math.min(debt[i].v,cred[j].v);
+    sl.append(el("li",{},el("span",{textContent:`${debt[i].m} → ${cred[j].m}`}),el("span",{className:"settle",textContent:yen(pay)})));
+    debt[i].v-=pay; cred[j].v-=pay; if(debt[i].v<0.5) i++; if(cred[j].v<0.5) j++; }
+  if(sl.children.length===1) sl.append(el("li",{},el("span",{textContent:"精算は不要です。"})));
+}
+$("#memberForm").addEventListener("submit",ev=>{ ev.preventDefault(); const v=$("#memberName").value.trim(); if(!v) return;
+  if(!getMe()) store.set("me",v); mut.addMember(v); $("#memberName").value=""; });
+$("#expForm").addEventListener("submit",ev=>{ ev.preventDefault(); const hint=$("#expHint");
+  const payer=$("#expPayer").value, y=Math.floor(Number($("#expAmount").value));
+  if(!payer){ hint.textContent="先にメンバーを追加してください。"; return; }
+  if(!(y>0)){ hint.textContent="金額を数字で入力してください。"; return; }
+  hint.textContent=""; mut.addExp({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),payer,yen:y,memo:$("#expMemo").value.trim()});
+  $("#expAmount").value=""; $("#expMemo").value=""; });
+
+/* ---------- 持ち物（集計は CSS 側） ---------- */
+function renderCheck(){
+  const items=store.get("check",DEFAULT_CHECK.map(t=>({t,done:false}))); const ul=$("#checkList"); ul.textContent="";
+  items.forEach((it,i)=>{ const cb=el("input",{type:"checkbox",checked:it.done,id:"chk"+i}); cb.addEventListener("change",()=>{ it.done=cb.checked; store.set("check",items); });
+    const x=el("button",{className:"x",type:"button",textContent:"×"}); x.setAttribute("aria-label",it.t+"を削除"); x.addEventListener("click",()=>{ items.splice(i,1); store.set("check",items); renderCheck(); });
+    ul.append(el("li",{},el("label",{},cb,el("span",{textContent:it.t})),x)); });
+}
+$("#checkForm").addEventListener("submit",ev=>{ ev.preventDefault(); const v=$("#checkName").value.trim(); if(!v) return;
+  const items=store.get("check",DEFAULT_CHECK.map(t=>({t,done:false}))); items.push({t:v,done:false}); store.set("check",items); $("#checkName").value=""; renderCheck(); });
+
+/* ---------- 起動 ---------- */
+renderPlan(); renderSpots(); renderCosts(); renderCheck(); renderNow(); loadWeather(); initShared();
+setInterval(renderNow,30000);
+const last=store.get("tab","plan");
+if(last!=="plan"){ document.querySelectorAll("section.tab").forEach(s=>s.hidden = s.id!=="tab-"+last);
+  document.querySelectorAll(".bar button").forEach(b=>b.setAttribute("aria-selected", b.dataset.tab===last)); if(last==="map") initMap(); }
+</script>
+</body>
+</html>
