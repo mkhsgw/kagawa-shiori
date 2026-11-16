@@ -321,12 +321,17 @@ ul.plain li span{min-width:0;flex:1}
 [hidden]{display:none!important}
 /* ---- 自由選択枠と投票 ---- */
 .tl .badge.voted{background:var(--olive);color:var(--ai-deep)}
-.addslot{position:relative;z-index:1;margin-top:4px}
-#slotDlg{border:0;padding:0;background:none;color:var(--ink);width:100%;max-width:600px;max-height:none;margin:auto auto 0;overflow:visible;
+.fab{position:fixed;z-index:1400;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(84px + env(safe-area-inset-bottom,0px));width:58px;height:58px;border-radius:50%;
+  background:var(--shu);color:var(--ai-deep);border:2.5px solid var(--edge);box-shadow:4px 4px 0 var(--edge);font-family:var(--display);font-size:28px;line-height:1;display:grid;place-items:center;transition:translate .1s,box-shadow .1s,rotate .25s}
+.fab:active{translate:4px 4px;box-shadow:0 0 0 var(--edge);rotate:90deg}
+.timepick{display:flex;align-items:center;gap:12px;font-family:var(--display);font-size:16px}
+.timepick input{flex:1;font-family:var(--display);font-size:26px;text-align:center;padding:10px}
+.tl li.saving{opacity:.7}
+.bs{border:0;padding:0;background:none;color:var(--ink);width:100%;max-width:600px;max-height:none;margin:auto auto 0;overflow:visible;
   translate:0 100%;transition:translate .35s cubic-bezier(.2,1.1,.4,1),display .35s allow-discrete,overlay .35s allow-discrete}
-#slotDlg[open]{translate:0 0}
-@starting-style{#slotDlg[open]{translate:0 100%}}
-#slotDlg::backdrop{background:color-mix(in oklch,var(--ai-deep) 70%,#0000);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+.bs[open]{translate:0 0}
+@starting-style{.bs[open]{translate:0 100%}}
+.bs::backdrop{background:color-mix(in oklch,var(--ai-deep) 70%,#0000);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
 .sheet{display:grid;gap:14px;background:var(--bg);border:2.5px solid var(--edge);border-bottom:0;border-radius:22px 22px 0 0;max-height:88dvh;overflow-y:auto;
   padding:18px max(16px,env(safe-area-inset-right,0px)) calc(22px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
 #slotBody{display:grid;gap:12px;grid-template-columns:minmax(0,1fr)}
@@ -459,6 +464,7 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
     </header>
     <div class="ticker" aria-hidden="true"><div id="ticker"></div></div>
     <div class="wrap" id="plan"></div>
+    <button class="fab" id="fabAdd" type="button" aria-label="自由選択枠を追加">＋</button>
   </section>
 
   <section class="tab" id="tab-map" hidden><div class="wrap">
@@ -615,7 +621,16 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
   </div></section>
 </main>
 
-<dialog id="slotDlg" aria-labelledby="slotTitle">
+<dialog class="bs" id="addDlg" aria-labelledby="addTitle">
+  <form class="sheet" id="addForm">
+    <div class="row"><h3 id="addTitle" style="flex:1">自由選択枠を追加</h3><button class="btn small ghost" id="addClose" type="button">とじる</button></div>
+    <p class="lead" id="addDay"></p>
+    <label class="timepick">何時から？ <input id="addTime" type="time" required></label>
+    <button class="btn" type="submit">この時刻に追加</button>
+  </form>
+</dialog>
+
+<dialog class="bs" id="slotDlg" aria-labelledby="slotTitle">
   <div class="sheet">
     <div class="row"><h3 id="slotTitle" style="flex:1"></h3><button class="btn small ghost" id="slotClose" type="button">とじる</button></div>
     <div id="slotBody"></div>
@@ -771,7 +786,7 @@ function evLi(d,e,i,state,now){
   if(e.memo) body.append(el("span",{className:"memo",textContent:e.memo}));
   if(s) body.append(el("a",{href:gmapUrl(s),target:"_blank",rel:"noopener",textContent:"ナビを開く ↗",className:"memo"}));
   if(e.decided&&e.id){ const u=el("button",{className:"btn small ghost",type:"button",textContent:"投票に戻す"}); u.style.marginTop="8px";
-    u.addEventListener("click",()=>{ if(!u.dataset.armed){ u.dataset.armed="1"; u.textContent="もう一度押すと戻します"; return; } write({action:"undecide",slot:e.id},()=>{}); }); body.append(el("div",{},u)); }
+    u.addEventListener("click",()=>{ if(!u.dataset.armed){ u.dataset.armed="1"; u.textContent="もう一度押すと戻します"; return; } write({action:"undecide",slot:e.id},()=>patchPlan(()=>{ e.open=true; e.decided=false; e.what="自由選択枠"; delete e.spot; })); }); body.append(el("div",{},u)); }
   det.append(body); li.append(det); return li;
 }
 function renderPlan(){
@@ -795,11 +810,6 @@ function renderPlan(){
   // 済んだ予定は1行にたたむ
   if(pastUl.children.length) day.append(el("details",{className:"pastbox"},el("summary",{textContent:`おわった予定 ${pastUl.children.length}件`}),pastUl));
   if(ul.children.length) day.append(ul); else day.append(el("p",{className:"lead",textContent:"この日の予定はすべて終わりました。"}));
-  // ＋ 枠を追加
-  const addF=el("form",{className:"row addslot"}), tIn=el("input",{type:"time",required:true}); tIn.setAttribute("aria-label","枠の開始時刻"); tIn.style.width="auto";
-  addF.append(tIn,el("button",{className:"btn small ghost",type:"submit",textContent:"＋ 自由選択枠を追加"}));
-  addF.addEventListener("submit",ev=>{ ev.preventDefault(); if(!tIn.value) return; write({action:"addSlot",date:d.date,time:tIn.value},()=>{}); tIn.value=""; });
-  day.append(addF);
   root.append(tabs,day);
   loadWeather();
 }
@@ -980,7 +990,7 @@ function write(body,localFn){
   const cached=store.get("cloud",null); if(cached) store.set("cloud",{...cached,members:S.members,exps:S.exps,udon:S.udon});  // 送信中に開き直しても消えないように
   renderShared(); pending++; syncState="saving"; renderSync();
   const done=chain.then(()=>call(body)).then(j=>{ pending--; if(!pending){ applyState(j); syncState="cloud"; renderSync(); } return true; },
-    ()=>{ pending--; syncState="error"; renderSync(); if(!pending) setTimeout(refresh,1500); return false; });
+    ()=>{ pending--; syncState="error"; renderSync(); sigA=sigP=sigV=""; if(!pending) setTimeout(refresh,1500); return false; });   // 失敗したら手元の先行表示を捨てて読み直す
   chain=done; return done;
 }
 const mut={
@@ -1109,16 +1119,27 @@ function feas(d,k,s){
 function tally(slot){ const c={}; CANDS.filter(x=>x.slot===slot).forEach(x=>{ c[x.spot]=[]; }); VOTES.filter(x=>x.slot===slot).forEach(x=>{ if(c[x.spot]) c[x.spot].push(x.name); });
   return Object.keys(c).map(spot=>({spot,who:c[spot]})).sort((a,b)=>b.who.length-a.who.length); }
 function slotLi(d,e,i,state){
-  const li=el("li",{className:("open slot "+state).trim()}); li.dataset.i=i;
+  const li=el("li",{className:("open slot "+state+(e.saving?" saving":"")).trim()}); li.dataset.i=i;
   if(state==="current") li.append(el("span",{className:"badge now",textContent:"いまここ"}));
   li.append(el("time",{textContent:e.t}),el("span",{className:"what",textContent:"自由選択枠"}));
   if(e.what&&e.what!=="自由選択枠") li.append(el("span",{className:"memo",textContent:e.what}));
   const t=tally(e.id), votes=t.reduce((a,x)=>a+x.who.length,0);
-  const b=el("button",{className:"btn small",type:"button",textContent:"行先を投票"}); b.addEventListener("click",()=>openSlot(e.id));
-  const info=!t.length?"候補を出そう":`候補${t.length}・${votes}票`+(votes?`・1位 ${spotName(t[0].spot)}`:"");
+  const b=el("button",{className:"btn small",type:"button",textContent:"行先を投票"}); b.addEventListener("click",()=>openSlot(e.id)); b.disabled=!!e.saving;
+  const info=e.saving?"保存中…（数秒で投票できます）":!t.length?"候補を出そう":`候補${t.length}・${votes}票`+(votes?`・1位 ${spotName(t[0].spot)}`:"");
   const r=el("div",{className:"row"},b,el("span",{className:"lead",textContent:info})); r.style.marginTop="6px"; li.append(r);
   return li;
 }
+// 行程を手元で先に書き換える
+function patchPlan(fn){ fn(); DAYS.forEach(d=>d.events.sort((a,b)=>a.t.localeCompare(b.t))); ALL=buildAll(); lastKey=""; renderPlan(); renderNow(); }
+$("#fabAdd").addEventListener("click",()=>{ const d=DAYS.find(x=>x.date===selDay); if(!d) return;
+  $("#addDay").textContent=`${d.label}（${d.dow}）の行程に追加します。`;
+  if(!$("#addTime").value) $("#addTime").value="12:00";
+  $("#addDlg").showModal(); });
+$("#addClose").addEventListener("click",()=>$("#addDlg").close());
+$("#addDlg").addEventListener("click",ev=>{ if(ev.target===$("#addDlg")) $("#addDlg").close(); });
+$("#addForm").addEventListener("submit",ev=>{ ev.preventDefault(); const t=$("#addTime").value, d=DAYS.find(x=>x.date===selDay); if(!t||!d) return;
+  $("#addDlg").close();
+  write({action:"addSlot",date:d.date,time:t},()=>patchPlan(()=>{ d.events.push({t,what:"自由選択枠",memo:"",open:true,decided:false,id:"tmp"+Date.now(),saving:true}); })); });
 function openSlot(id){ curSlot=id; renderSlot(); const dlg=$("#slotDlg"); if(!dlg.open) dlg.showModal(); }
 function renderSlot(){
   const f=findSlot(curSlot), box=$("#slotBody"); box.textContent="";
@@ -1156,16 +1177,17 @@ $("#candForm").addEventListener("submit",ev=>{ ev.preventDefault(); const hint=$
   const spot=$("#candPick").value, name=$("#candName").value.trim(), link=$("#candLink").value.trim();
   if(!spot&&!name){ hint.textContent="リストから選ぶか、店名を入れてください。"; return; }
   if(!spot&&link&&!/^https:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|(www\.)?google\.[a-z.]+\/maps|maps\.google\.)/.test(link)){ hint.textContent="GoogleマップのURLを貼ってください（共有ボタンでコピーしたもの）。"; return; }
-  hint.textContent="候補を追加しています…";
-  write(spot?{action:"addCand",slot:curSlot,spot,by:me}:{action:"addCand",slot:curSlot,name,link,open:$("#candOpen").value,close:$("#candClose").value,by:me},()=>{})
+  hint.textContent=spot?"":"候補を追加しています…（場所を探すので数秒かかります）";
+  write(spot?{action:"addCand",slot:curSlot,spot,by:me}:{action:"addCand",slot:curSlot,name,link,open:$("#candOpen").value,close:$("#candClose").value,by:me},()=>{ if(spot){ CANDS.push({slot:curSlot,spot,by:me}); renderSlot(); renderPlan(); } })
     .then(ok=>{ hint.textContent=ok?"":"追加できませんでした。電波を確認してください。"; if(ok){ ["#candName","#candLink","#candOpen","#candClose"].forEach(q=>{ $(q).value=""; }); } });
 });
 $("#slotDecide").addEventListener("click",()=>{ const db=$("#slotDecide"), t=tally(curSlot), top=t.filter(x=>x.who.length&&x.who.length===t[0].who.length); if(!top.length) return;
   if(!db.dataset.armed){ db.dataset.armed="1"; db.textContent="もう一度押すと行程に入れます"; return; }
-  const win=top[Math.floor(Math.random()*top.length)]; $("#slotDlg").close();
-  write({action:"decide",slot:curSlot,spot:win.spot},()=>{}); });
+  const win=top[Math.floor(Math.random()*top.length)], f=findSlot(curSlot); $("#slotDlg").close();
+  write({action:"decide",slot:curSlot,spot:win.spot},()=>patchPlan(()=>{ if(f){ f.e.open=false; f.e.decided=true; f.e.what=spotName(win.spot); f.e.spot=win.spot; } })); });
 $("#slotDel").addEventListener("click",()=>{ const b=$("#slotDel"); if(!b.dataset.armed){ b.dataset.armed="1"; b.textContent="もう一度押すと消します"; return; }
-  $("#slotDlg").close(); write({action:"delSlot",slot:curSlot},()=>{}); });
+  const f=findSlot(curSlot); $("#slotDlg").close();
+  write({action:"delSlot",slot:curSlot},()=>patchPlan(()=>{ if(f) f.d.events.splice(f.k,1); })); });
 
 /* ---------- メンバーの現在地と行動履歴 ---------- */
 let LOCS={}, sigL="", memLayer=null, lastSent=null;
