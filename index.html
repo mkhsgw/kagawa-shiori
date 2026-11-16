@@ -494,7 +494,7 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
     </div>
   </div></section>
 
-  <section class="tab" id="tab-spots" hidden><div class="wrap">
+  <section class="tab" id="tab-spots" hidden><button class="fab" id="fabSpot" type="button" aria-label="場所を追加">＋</button><div class="wrap">
     <h2>お店</h2>
     <div class="spots" id="shopList"></div>
     <h2>宿・交通</h2>
@@ -630,6 +630,20 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
   </div></section>
 </main>
 
+<dialog class="bs" id="spotDlg" aria-labelledby="spotTitle">
+  <form class="sheet" id="spotForm">
+    <div class="row"><h3 id="spotTitle" style="flex:1">場所を追加</h3><button class="btn small ghost" id="spotClose" type="button">とじる</button></div>
+    <input id="spName" maxlength="30" required placeholder="店名（正確に。地図のピンに使います）" autocomplete="off" aria-label="店名">
+    <input id="spLink" inputmode="url" placeholder="GoogleマップのURL（ナビ用・なくてもOK）" autocomplete="off" aria-label="GoogleマップのURL">
+    <div class="row"><label class="lead">開店 <input id="spOpen" type="time" style="width:auto"></label><label class="lead">閉店 <input id="spClose" type="time" style="width:auto"></label></div>
+    <input id="spClosed" maxlength="20" placeholder="定休日（例: 日曜）" autocomplete="off" aria-label="定休日">
+    <input id="spOrder" maxlength="40" placeholder="おすすめの頼み方（例: ひやあつ小＋ちくわ天）" autocomplete="off" aria-label="おすすめの頼み方">
+    <input id="spMemo" maxlength="60" placeholder="ひとことメモ" autocomplete="off" aria-label="メモ">
+    <button class="btn" type="submit">お店リストに追加</button>
+    <p class="lead" id="spHint" role="status">開店・閉店を入れておくと、投票のときに「間に合うか」を判定します。</p>
+  </form>
+</dialog>
+
 <dialog class="bs" id="addDlg" aria-labelledby="addTitle">
   <form class="sheet" id="addForm">
     <div class="row"><h3 id="addTitle" style="flex:1">自由選択枠を追加</h3><button class="btn small ghost" id="addClose" type="button">とじる</button></div>
@@ -647,10 +661,7 @@ footer{color:var(--muted);font-family:var(--dot);font-size:12px;padding-block:8p
     <form class="card" id="candForm">
       <h3>候補を出す</h3>
       <select id="candPick" aria-label="お店リストから選ぶ"></select>
-      <p class="lead">リストにない店は、下に入れてください。</p>
-      <input id="candName" maxlength="30" placeholder="店名（地図のピンと所要時間に使います）" autocomplete="off" aria-label="店名">
-      <input id="candLink" inputmode="url" placeholder="GoogleマップのURL（ナビ用）" autocomplete="off" aria-label="GoogleマップのURL">
-      <div class="row"><label class="lead">開店 <input id="candOpen" type="time" style="width:auto"></label><label class="lead">閉店 <input id="candClose" type="time" style="width:auto"></label></div>
+      <p class="lead">リストにない店は、「場所」タブの＋ボタンから追加できます。</p>
       <button class="btn small" type="submit">候補に追加</button>
       <p class="lead" id="slotHint" role="status"></p>
     </form>
@@ -864,6 +875,10 @@ function renderSpots(){
     const b=el("button",{className:"btn small ghost",type:"button",textContent:"地図で見る"}); b.addEventListener("click",ev=>{ showTab("map",ev); setTimeout(()=>focusSpot(s),650); }); if(s.lat!=null) row.append(b);
     const ph=PHOTOS.filter(x=>x.spot===s.id);
     if(ph.length){ const st=el("div",{className:"strip"}); ph.slice().reverse().forEach(x=>{ const b2=el("button",{type:"button"},photoImg(x,300)); b2.setAttribute("aria-label","写真を大きく表示"); b2.addEventListener("click",()=>openViewer(x)); st.append(b2); }); body.append(st); }
+    if(s.by){ body.append(el("div",{className:"lead",textContent:s.by+" さんが追加"}));
+      if(s.by===getMe()){ const x=el("button",{className:"x",type:"button",textContent:"この場所を消す"}); x.style.fontSize="12.5px";
+        x.addEventListener("click",()=>{ if(!x.dataset.armed){ x.dataset.armed="1"; x.textContent="もう一度押すと消します"; return; }
+          write({action:"delSpot",spot:s.id},()=>{}); }); row.append(x); } }
     body.append(row); det.append(body);
     (s.kind==="shop"?shop:base).append(det);
   });
@@ -1164,6 +1179,18 @@ $("#addDlg").addEventListener("click",ev=>{ if(ev.target===$("#addDlg")) $("#add
 $("#addForm").addEventListener("submit",ev=>{ ev.preventDefault(); const t=$("#addTime").value, d=DAYS.find(x=>x.date===selDay); if(!t||!d) return;
   $("#addDlg").close();
   write({action:"addSlot",date:d.date,time:t},()=>patchPlan(()=>{ d.events.push({t,what:"自由選択枠",memo:"",open:true,decided:false,id:"tmp"+Date.now(),saving:true}); })); });
+$("#fabSpot").addEventListener("click",()=>{ $("#spHint").textContent="開店・閉店を入れておくと、投票のときに「間に合うか」を判定します。"; $("#spotDlg").showModal(); });
+$("#spotClose").addEventListener("click",()=>$("#spotDlg").close());
+$("#spotDlg").addEventListener("click",ev=>{ if(ev.target===$("#spotDlg")) $("#spotDlg").close(); });
+$("#spotForm").addEventListener("submit",ev=>{ ev.preventDefault(); const hint=$("#spHint"), name=$("#spName").value.trim(), link=$("#spLink").value.trim();
+  if(!name){ hint.textContent="店名を入れてください。"; return; }
+  if(SPOTS.some(x=>x.name===name)){ hint.textContent="同じ名前の場所がすでにあります。"; return; }
+  if(link&&!/^https:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|(www\.)?google\.[a-z.]+\/maps|maps\.google\.)/.test(link)){ hint.textContent="GoogleマップのURLを貼ってください（共有ボタンでコピーしたもの）。"; return; }
+  write({action:"addSpot",name,link,open:$("#spOpen").value,close:$("#spClose").value,closed:$("#spClosed").value.trim(),order:$("#spOrder").value.trim(),memo:$("#spMemo").value.trim(),by:getMe()},()=>{})
+    .then(ok=>{ if(!ok){ hint.textContent="追加できませんでした。電波を確認してください。"; return; }
+      $("#spotForm").reset(); $("#spotDlg").close();
+      const s=SPOTS.find(x=>x.name===name); if(s){ const d=document.getElementById("spot-"+s.id); if(d){ d.open=true; d.scrollIntoView({block:"center"}); } } });
+});
 function openSlot(id){ curSlot=id; renderSlot(); const dlg=$("#slotDlg"); if(!dlg.open) dlg.showModal(); }
 function renderSlot(){
   const f=findSlot(curSlot), box=$("#slotBody"); box.textContent="";
@@ -1197,13 +1224,11 @@ function renderSlot(){
 }
 $("#slotClose").addEventListener("click",()=>$("#slotDlg").close());
 $("#slotDlg").addEventListener("click",ev=>{ if(ev.target===$("#slotDlg")) $("#slotDlg").close(); });
-$("#candForm").addEventListener("submit",ev=>{ ev.preventDefault(); const hint=$("#slotHint"), me=getMe();
-  const spot=$("#candPick").value, name=$("#candName").value.trim(), link=$("#candLink").value.trim();
-  if(!spot&&!name){ hint.textContent="リストから選ぶか、店名を入れてください。"; return; }
-  if(!spot&&link&&!/^https:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|(www\.)?google\.[a-z.]+\/maps|maps\.google\.)/.test(link)){ hint.textContent="GoogleマップのURLを貼ってください（共有ボタンでコピーしたもの）。"; return; }
-  hint.textContent=spot?"":"候補を追加しています…（場所を探すので数秒かかります）";
-  write(spot?{action:"addCand",slot:curSlot,spot,by:me}:{action:"addCand",slot:curSlot,name,link,open:$("#candOpen").value,close:$("#candClose").value,by:me},()=>{ if(spot){ CANDS.push({slot:curSlot,spot,by:me}); renderSlot(); renderPlan(); } })
-    .then(ok=>{ hint.textContent=ok?"":"追加できませんでした。電波を確認してください。"; if(ok){ ["#candName","#candLink","#candOpen","#candClose"].forEach(q=>{ $(q).value=""; }); } });
+$("#candForm").addEventListener("submit",ev=>{ ev.preventDefault(); const hint=$("#slotHint"), me=getMe(), spot=$("#candPick").value;
+  if(!spot){ hint.textContent="お店リストから選んでください。"; return; }
+  hint.textContent="";
+  write({action:"addCand",slot:curSlot,spot,by:me},()=>{ CANDS.push({slot:curSlot,spot,by:me}); renderSlot(); renderPlan(); })
+    .then(ok=>{ if(!ok) hint.textContent="追加できませんでした。電波を確認してください。"; });
 });
 $("#slotDecide").addEventListener("click",()=>{ const db=$("#slotDecide"), t=tally(curSlot), top=t.filter(x=>x.who.length&&x.who.length===t[0].who.length); if(!top.length) return;
   if(!db.dataset.armed){ db.dataset.armed="1"; db.textContent="もう一度押すと行程に入れます"; return; }
