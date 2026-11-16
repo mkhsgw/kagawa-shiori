@@ -323,6 +323,13 @@ ul.plain li span{min-width:0;flex:1}
 .pola.big img{aspect-ratio:auto;max-height:66dvh;object-fit:contain;background:#14173d}
 .pola.big span{font-size:17px;white-space:normal}
 [hidden]{display:none!important}
+/* ---- お店の実物の写真 ---- */
+.gphotos{display:grid;gap:4px;min-width:0}
+.gstrip{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px;scrollbar-width:none}
+.gstrip::-webkit-scrollbar{display:none}
+.gstrip figure{flex:0 0 62%;max-width:240px;margin:0;scroll-snap-align:start;display:grid;gap:2px}
+.gstrip img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;border:2px solid var(--edge);border-radius:10px;background:var(--line)}
+.gstrip figcaption,.gcredit{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* ---- お店のカテゴリ ---- */
 button.chip[aria-pressed="true"]{background:var(--dashi);color:var(--ai-deep);rotate:-2deg}
 .cat-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-top:8px}
@@ -763,6 +770,9 @@ let COSTS = [];
 // Googleドライブ連携: Apps Script の「ウェブアプリのURL」。
 const API_URL = "https://script.google.com/macros/s/AKfycbwbFV3LHTasSAZl-KmH-9GHGTH0lYL6k1lxaWcSoiFXO8tGRqPPyE8JUL2GBs_R4fY/exec";
 let API_KEY = "";   // あいことば。入力されたものを端末に覚える（ソースには書かない）
+// お店の写真をその場で出すための Google Maps Platform のAPIキー（空なら写真は出さず、検索ボタンだけ）。
+// このキーは公開ページに載るので、Google Cloud 側で「このサイトからだけ使える」制限を必ず付ける。
+const PLACES_KEY = "";
 const DAY_TITLES = { "2026-11-28":"移動日", "2026-11-29":"レンタカー1日目", "2026-11-30":"レンタカー2日目・帰り" };
 
 const TICKER = ["うどん","骨付鳥","瀬戸内海","KAGAWA","オリーブ","讃岐","ひやあつ小","TAKAMATSU"];
@@ -966,6 +976,33 @@ function bowlSvg(type){
 }
 function bowlPic(s){ const t=udonType(s), b=el("span",{className:"bowlpic"}); b.innerHTML=bowlSvg(t); b.append(el("small",{textContent:UDON_NAME[t]})); return b; }
 
+/* ---------- お店の実物の写真: Google マップの写真をその場で取りに行く（どこにも保存しない） ---------- */
+const PHOTO_MEM=new Map();   // 開いている間だけ覚える。店ごとに1回しか問い合わせない。
+function shopPhotos(s){
+  if(PHOTO_MEM.has(s.id)) return PHOTO_MEM.get(s.id);
+  const body={textQuery:s.name+" 香川県",languageCode:"ja",maxResultCount:1};
+  if(s.lat!=null) body.locationBias={circle:{center:{latitude:s.lat,longitude:s.lng},radius:3000}};
+  const pr=fetch("https://places.googleapis.com/v1/places:searchText",{method:"POST",
+      headers:{"Content-Type":"application/json","X-Goog-Api-Key":PLACES_KEY,"X-Goog-FieldMask":"places.id,places.photos"},body:JSON.stringify(body)})
+    .then(r=>{ if(!r.ok) throw new Error("places "+r.status); return r.json(); })
+    .then(j=>((((j.places||[])[0]||{}).photos)||[]).slice(0,4).map(x=>({name:x.name,by:(x.authorAttributions||[]).map(a=>a.displayName).filter(Boolean).join("、")})));
+  PHOTO_MEM.set(s.id,pr); pr.catch(()=>PHOTO_MEM.delete(s.id));
+  return pr;
+}
+async function loadShopPhotos(s,box){
+  if(box.dataset.done) return; box.dataset.done="1"; box.textContent="";
+  box.append(el("span",{className:"lead",textContent:"写真を読み込み中…"}));
+  try{
+    const ph=await shopPhotos(s); box.textContent="";
+    if(!ph.length){ box.append(el("span",{className:"lead",textContent:"Google マップに写真が見つかりませんでした。"})); return; }
+    const strip=el("div",{className:"gstrip"});
+    ph.forEach(x=>{ const im=el("img",{alt:s.name+" の写真",loading:"lazy"}); im.referrerPolicy="strict-origin-when-cross-origin";
+      im.src=`https://places.googleapis.com/v1/${x.name}/media?maxWidthPx=480&key=${encodeURIComponent(PLACES_KEY)}`;
+      strip.append(el("figure",{},im,el("figcaption",{textContent:x.by?"撮影: "+x.by:""}))); });
+    box.append(strip,el("span",{className:"gcredit",textContent:"写真: Google マップ"}));
+  }catch(e){ box.textContent=""; box.dataset.done=""; box.append(el("span",{className:"lead",textContent:"写真を読み込めませんでした。"})); }
+}
+
 const CATS=["出汁系","麺系","変わり種系"];
 const CAT_NOTE={"出汁系":"だしを味わう店","麺系":"麺そのものが主役の店","変わり種系":"ここだけのメニューがある店","未分類":"カードを開くとカテゴリを選べます"};
 
@@ -1007,11 +1044,13 @@ function renderSpots(){
     const b=el("button",{className:"btn small ghost",type:"button",textContent:"地図で見る"}); b.addEventListener("click",ev=>{ showTab("map",ev); setTimeout(()=>focusSpot(s),650); }); if(s.lat!=null) row.append(b);
     const ph=PHOTOS.filter(x=>x.spot===s.id);
     if(ph.length){ const st=el("div",{className:"strip"}); ph.slice().reverse().forEach(x=>{ const b2=el("button",{type:"button"},photoImg(x,300)); b2.setAttribute("aria-label","写真を大きく表示"); b2.addEventListener("click",()=>openViewer(x)); st.append(b2); }); body.append(st); }
+    if(s.kind==="shop"&&PLACES_KEY){ const gp=el("div",{className:"gphotos"}); body.append(gp);
+      det.addEventListener("toggle",()=>{ if(det.open) loadShopPhotos(s,gp); }); if(det.open) loadShopPhotos(s,gp); }
     if(s.kind==="shop"){ const cs=el("select",{className:"catsel"}); cs.setAttribute("aria-label","カテゴリ");
       ["",...CATS].forEach(c=>cs.append(el("option",{value:c,textContent:c||"未分類"}))); cs.value=CATS.includes(s.category)?s.category:"";
       cs.addEventListener("change",()=>write({action:"updSpot",spot:s.id,category:cs.value},()=>{ s.category=cs.value; renderSpots(); }));
       body.append(el("label",{className:"row lead"},"カテゴリ ",cs)); }
-    if(s.kind==="shop") row.append(el("a",{className:"btn small ghost",href:"https://www.google.com/search?tbm=isch&q="+encodeURIComponent(s.name+" うどん"),target:"_blank",rel:"noopener",textContent:"実物の写真を見る ↗"}));
+    if(s.kind==="shop") row.append(el("a",{className:"btn small ghost",href:"https://www.google.com/search?tbm=isch&q="+encodeURIComponent(s.name+" うどん"),target:"_blank",rel:"noopener",textContent:PLACES_KEY?"写真をもっと見る ↗":"実物の写真を見る ↗"}));
     if(s.by){ body.append(el("div",{className:"lead",textContent:s.by+" さんが追加"}));
       if(s.by===getMe()){ const x=el("button",{className:"x",type:"button",textContent:"この場所を消す"}); x.style.fontSize="12.5px";
         x.addEventListener("click",()=>{ if(!x.dataset.armed){ x.dataset.armed="1"; x.textContent="もう一度押すと消します"; return; }
